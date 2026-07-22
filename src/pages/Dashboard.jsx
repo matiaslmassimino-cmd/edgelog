@@ -64,7 +64,7 @@ export default function Dashboard({ session }) {
     setMigrating(true)
     try {
       // Import preload data from the existing HTML
-      const res = await fetch('/preload.json')
+      const res = await fetch('/edgelog/preload.json')
       const data = await res.json()
       await bulkMigrate(userId, data)
       await reload()
