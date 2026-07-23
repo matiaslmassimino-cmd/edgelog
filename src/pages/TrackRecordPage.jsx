@@ -1,4 +1,4 @@
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { calcMetrics, isQuality, calcSharpe, calcSortino, calcCalmar, calcEdgeRatio, calcDynamicGoals, calcAUM, buildEquityCurve, calcDirectionStats } from '../lib/metrics'
 
 const tip = { background: '#1A2235', border: '1px solid #2A3A52', borderRadius: 8, fontSize: 11, color: '#E2E8F0' }
@@ -138,22 +138,23 @@ export default function TrackRecordPage({ ctx }) {
         )}
       </div>
 
-      {/* Equity curve */}
+      {/* Equity curve con área */}
       <div className="card" style={{ marginBottom: 18 }}>
         <div className="card-title">Equity curve — P&L acumulado</div>
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={equityData}>
+        <ResponsiveContainer width="100%" height={280}>
+          <AreaChart data={equityData}>
+            <defs>
+              <linearGradient id="pnlGradTrack" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+              </linearGradient>
+            </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)" />
-            <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} />
+            <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
             <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + '%'} />
             <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'P&L acum.']} />
-            <Line type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2.5}
-              dot={(props) => {
-                if (!props.payload.resultado) return <circle key={props.key} cx={props.cx} cy={props.cy} r={2} fill="#3B82F6" />
-                const color = props.payload.resultado === 'Win' ? '#22C55E' : '#EF4444'
-                return <circle key={props.key} cx={props.cx} cy={props.cy} r={4} fill={color} stroke="#111827" strokeWidth={1.5} />
-              }} activeDot={{ r: 6 }} />
-          </LineChart>
+            <Area type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2} fill="url(#pnlGradTrack)" dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#111827', strokeWidth: 2 }} />
+          </AreaChart>
         </ResponsiveContainer>
       </div>
 
