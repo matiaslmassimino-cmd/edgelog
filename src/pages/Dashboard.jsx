@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { calcMetrics, isQuality, calcStreaks, calcDynamicGoals, calcDeteriorationAlerts, buildEquityCurve } from '../lib/metrics'
 
 const CHECKLIST_ITEMS = [
@@ -10,6 +10,8 @@ const CHECKLIST_ITEMS = [
   'Sé exactamente qué setup esperar',
   'Soy consciente del drawdown en cada cuenta',
 ]
+
+const tip = { background: '#1A2235', border: '1px solid #2A3A52', borderRadius: 8, fontSize: 11, color: '#E2E8F0' }
 
 function KPICard({ label, value, sub, pos, neg, dark, gold, goalBar }) {
   const cl = dark || gold ? 'kpi ' + (dark ? 'dark' : 'gold') : 'kpi'
@@ -66,8 +68,6 @@ export default function Dashboard({ ctx }) {
     if (cur === null || cur === undefined) return null
     return { target, pct: Math.min(Math.round(cur / target * 100), 100) }
   }
-
-  const tipStyle = { background: '#1A2235', border: '1px solid #2A3A52', borderRadius: 8, fontSize: 11, color: '#E2E8F0' }
 
   return (
     <div>
@@ -143,22 +143,24 @@ export default function Dashboard({ ctx }) {
         </div>
       </div>
 
+      {/* Equity curve con área */}
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="card-title">Equity curve — P&L acumulado</div>
         {equityData.length <= 1 ? <div className="empty"><div className="empty-icon">∿</div><p>Sin datos aún.</p></div> : (
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={equityData}>
+          <ResponsiveContainer width="100%" height={280}>
+            <AreaChart data={equityData}>
+              <defs>
+                <linearGradient id="pnlGradDash" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)" />
-              <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} />
+              <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
               <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + '%'} />
-              <Tooltip contentStyle={tipStyle} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'P&L acum.']} labelStyle={{ color: '#60A5FA', fontWeight: 600 }} />
-              <Line type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2.5}
-                dot={(props) => {
-                  if (!props.payload.resultado) return <circle key={props.key} cx={props.cx} cy={props.cy} r={2} fill="#3B82F6" />
-                  const color = props.payload.resultado === 'Win' ? '#22C55E' : props.payload.resultado === 'Loss' ? '#EF4444' : '#F59E0B'
-                  return <circle key={props.key} cx={props.cx} cy={props.cy} r={4} fill={color} stroke="#111827" strokeWidth={1.5} />
-                }} activeDot={{ r: 6, fill: '#60A5FA' }} />
-            </LineChart>
+              <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'P&L acum.']} labelStyle={{ color: '#60A5FA', fontWeight: 600 }} />
+              <Area type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2} fill="url(#pnlGradDash)" dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#111827', strokeWidth: 2 }} />
+            </AreaChart>
           </ResponsiveContainer>
         )}
       </div>
