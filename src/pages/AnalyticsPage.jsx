@@ -1,4 +1,4 @@
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, Legend } from 'recharts'
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, CartesianGrid, Legend } from 'recharts'
 import { calcMetrics, isQuality, buildEquityCurve, groupByPeriod, calcDirectionStats } from '../lib/metrics'
 
 const COLORS_RES = { Win: '#22C55E', Loss: '#EF4444', Breakeven: '#F59E0B' }
@@ -6,7 +6,7 @@ const COLORS_PLAN = { '100% exacto': '#22C55E', Parcialmente: '#F59E0B', 'No cum
 const COLORS_EMO = { Calmo: '#22C55E', Ansioso: '#EF4444', FOMO: '#EAB308', Revenge: '#8B5CF6' }
 const tip = { background: '#1A2235', border: '1px solid #2A3A52', borderRadius: 8, fontSize: 11, color: '#E2E8F0' }
 
-const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, name, value }) => {
+const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, value }) => {
   const RADIAN = Math.PI / 180
   const radius = innerRadius + (outerRadius - innerRadius) * 0.5
   const x = cx + radius * Math.cos(-midAngle * RADIAN)
@@ -69,7 +69,6 @@ export default function AnalyticsPage({ ctx }) {
         <div className="page-sub">Análisis visual completo de tu operativa.</div>
       </div>
 
-      {/* KPIs */}
       <div className="kpi-grid kpi-grid-4" style={{ marginBottom: 16 }}>
         <div className="kpi"><div className="kl">Win rate global</div><div className={`kv ${g.wr >= 50 ? 'pos' : 'neg'}`}>{g.wr !== null ? g.wr + '%' : '—'}</div><div className="ks">{g.w}W · {g.l}L</div></div>
         <div className="kpi gold"><div className="kl">WR calidad ✦</div><div className="kv">{gQ.wr !== null ? gQ.wr + '%' : '—'}</div><div className="ks">{qTrades.length} disciplinados</div></div>
@@ -77,17 +76,23 @@ export default function AnalyticsPage({ ctx }) {
         <div className="kpi"><div className="kl">R:R real promedio</div><div className={`kv ${g.avgRR >= 2 ? 'pos' : ''}`}>{g.avgRR !== null ? `1:${g.avgRR.toFixed(1)}` : '—'}</div><div className="ks">solo wins</div></div>
       </div>
 
-      {/* Equity curve — grande y sin puntos */}
+      {/* Equity curve con área sombreada */}
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="card-title">Equity curve — P&L acumulado</div>
         <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={equityData}>
+          <AreaChart data={equityData}>
+            <defs>
+              <linearGradient id="pnlGradAN" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+              </linearGradient>
+            </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)" />
             <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
             <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + '%'} />
             <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'P&L acum.']} labelStyle={{ color: '#60A5FA', fontWeight: 600 }} />
-            <Line type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2} dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#111827', strokeWidth: 2 }} />
-          </LineChart>
+            <Area type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2} fill="url(#pnlGradAN)" dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#111827', strokeWidth: 2 }} />
+          </AreaChart>
         </ResponsiveContainer>
       </div>
 
@@ -160,8 +165,8 @@ export default function AnalyticsPage({ ctx }) {
             <BarChart data={dirData} layout="vertical">
               <XAxis type="number" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} />
               <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fill: '#94A3B8' }} tickLine={false} axisLine={false} width={80} />
-              <Tooltip contentStyle={tip} formatter={(v, n) => [v, n === 'trades' ? 'Trades' : 'Win rate']} />
-              <Bar dataKey="trades" name="trades" radius={[0, 6, 6, 0]}>
+              <Tooltip contentStyle={tip} formatter={(v, n) => [v, 'Trades']} />
+              <Bar dataKey="trades" name="Trades" radius={[0, 6, 6, 0]}>
                 <Cell fill="#22C55E" /><Cell fill="#EF4444" />
               </Bar>
             </BarChart>
