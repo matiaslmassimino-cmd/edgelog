@@ -10,6 +10,46 @@ const STATUS = {
 
 const EMPTY = { type: 'challenge', nombre: '', firma: 'Alpha Capital Group', fase: 'Fase 1', capital: 10000, objetivo: 8, dd: 8, split: '80/20', nota: '', status: 'active' }
 
+function DDTooltip({ maxDD, ddPct, ddLim, ddCol, pnlCur }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 9.5, color: 'var(--text3)', marginBottom: 4 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          Caída desde pico: <strong style={{ color: ddCol }}>{maxDD.toFixed(2)}%</strong>
+          <span
+            onClick={() => setOpen(!open)}
+            style={{ cursor: 'pointer', fontSize: 9.5, color: 'var(--text3)', background: 'var(--bg4)', border: '1px solid var(--border2)', borderRadius: '50%', width: 15, height: 15, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, userSelect: 'none', flexShrink: 0 }}>
+            ?
+          </span>
+        </span>
+        <span style={{ color: ddCol, fontWeight: 600 }}>{ddPct}% del límite ({ddLim}%)</span>
+      </div>
+
+      {open && (
+        <div style={{ background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 10, padding: '12px 14px', fontSize: 11.5, color: 'var(--text2)', lineHeight: 1.7, marginBottom: 8 }}>
+          <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>¿Qué es la caída desde pico?</div>
+          <p>Es la mayor distancia entre el <strong>mejor momento</strong> de la cuenta y el <strong>peor momento posterior</strong>. No importa si estás en positivo — si llegaste a +7% y ahora estás en +1%, tu caída desde pico es 6%.</p>
+          <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 11, color: 'var(--text3)' }}>Fórmula: <code style={{ color: 'var(--accent2)' }}>Pico histórico − Valor actual</code></div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+              Límite de la firma: <strong style={{ color: 'var(--text)' }}>{ddLim}%</strong> · Consumido: <strong style={{ color: ddCol }}>{ddPct}%</strong>
+            </div>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 11, color: ddPct > 80 ? 'var(--red)' : ddPct > 55 ? 'var(--amber)' : 'var(--green)' }}>
+            {ddPct > 80 ? '⚠ Zona de peligro — gestioná el riesgo con cuidado.' : ddPct > 55 ? '△ Zona de precaución — atención al riesgo.' : '✓ Cuenta bien gestionada.'}
+          </div>
+          <button onClick={() => setOpen(false)} style={{ marginTop: 8, fontSize: 10.5, color: 'var(--text3)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Cerrar ✕</button>
+        </div>
+      )}
+
+      <div className="dd-bar">
+        <div className="dd-fill" style={{ width: `${ddPct}%`, background: ddCol }} />
+      </div>
+    </div>
+  )
+}
+
 export default function CuentasPage({ ctx }) {
   const { accounts, trades, withdrawals, addAccount, removeAccount, setAccStatus, toast } = ctx
   const [showForm, setShowForm] = useState(false)
@@ -61,6 +101,8 @@ export default function CuentasPage({ ctx }) {
 
     return (
       <div style={{ background: 'var(--bg2)', border: `1px solid ${a.status === 'perdida' ? 'var(--red-border)' : 'var(--border)'}`, borderRadius: 'var(--radius-lg)', padding: '16px 18px', marginBottom: 10, opacity: isDone ? .7 : 1 }}>
+
+        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
             <div style={{ width: 3, height: 34, borderRadius: 3, background: isF ? 'var(--gold)' : 'var(--accent)', flexShrink: 0, marginTop: 3 }} />
@@ -70,7 +112,7 @@ export default function CuentasPage({ ctx }) {
                 <span style={{ padding: '2px 7px', borderRadius: 4, background: st.bg, color: st.color, border: `1px solid ${st.border}`, fontSize: 9.5, fontWeight: 600 }}>{st.label}</span>
                 <span style={{ padding: '2px 7px', borderRadius: 4, background: isF ? 'var(--gold-bg)' : 'var(--amber-bg)', color: isF ? 'var(--gold)' : 'var(--amber)', border: `1px solid ${isF ? 'var(--gold-border)' : 'var(--amber-border)'}`, fontSize: 9.5, fontWeight: 600 }}>{isF ? 'Fondeada' : a.fase || 'Challenge'}</span>
               </div>
-              <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{a.firma} · ${cap.toLocaleString()} · {isF ? `Split ${a.split}` : `Obj ${a.objetivo}%`} · DD {a.dd}%</div>
+              <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{a.firma} · ${cap.toLocaleString()} · {isF ? `Split ${a.split}` : `Obj ${a.objetivo}%`} · DD máx {a.dd}%</div>
               {(parent || child) && (
                 <div style={{ fontSize: 10, color: 'var(--accent2)', marginTop: 3, fontWeight: 500 }}>
                   {parent && <span>← {parent.nombre}</span>}{parent && child && ' → '}{!parent && child && '→ '}{child && <span>{child.nombre}</span>}
@@ -85,22 +127,21 @@ export default function CuentasPage({ ctx }) {
           </div>
         </div>
 
-        <div style={{ marginBottom: 8 }}>
+        {/* Barra de progreso */}
+        <div style={{ marginBottom: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, color: 'var(--text3)', marginBottom: 3 }}>
-            <span>Progreso al objetivo ({obj}%)</span><span style={{ fontWeight: 600 }}>{barPct.toFixed(0)}%</span>
+            <span>Progreso al objetivo ({obj}%)</span>
+            <span style={{ fontWeight: 600 }}>{barPct.toFixed(0)}%</span>
           </div>
           <div className="pb"><div className="pf" style={{ width: `${barPct}%`, background: pnlCur >= 0 ? 'var(--green)' : 'var(--red)' }} /></div>
         </div>
 
+        {/* DD con tooltip explicativo */}
         {te.length > 0 && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, color: 'var(--text3)', marginBottom: 3 }}>
-              <span>Drawdown: {maxDD.toFixed(2)}%</span><span style={{ color: ddCol, fontWeight: 600 }}>{ddPct}% del límite</span>
-            </div>
-            <div className="dd-bar"><div className="dd-fill" style={{ width: `${ddPct}%`, background: ddCol }} /></div>
-          </div>
+          <DDTooltip maxDD={maxDD} ddPct={ddPct} ddLim={ddLim} ddCol={ddCol} pnlCur={pnlCur} />
         )}
 
+        {/* Acciones */}
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
           {a.status === 'active' && <>
             <button className="btn btn-sm" onClick={() => { setConfirmId(a.id); setConfirmAction('completed') }}>✓ Completada</button>
@@ -110,10 +151,13 @@ export default function CuentasPage({ ctx }) {
           <button className="btn btn-sm btn-danger" style={{ marginLeft: 'auto' }} onClick={() => { setConfirmId(a.id); setConfirmAction('delete') }}>🗑</button>
         </div>
 
+        {/* Confirmación */}
         {confirmId === a.id && (
           <div style={{ marginTop: 10, padding: '10px 14px', background: 'var(--red-bg)', border: '1px solid var(--red-border)', borderRadius: 9 }}>
             <div style={{ fontSize: 12.5, color: 'var(--red)', marginBottom: 8, fontWeight: 500 }}>
-              {confirmAction === 'delete' ? `¿Eliminar ${a.nombre}?` : confirmAction === 'perdida' ? `¿Marcar ${a.nombre} como perdida? Capital: $${cap.toLocaleString()}` : `¿Completar ${a.nombre}?`}
+              {confirmAction === 'delete' ? `¿Eliminar ${a.nombre}? Esta acción es irreversible.`
+                : confirmAction === 'perdida' ? `¿Marcar ${a.nombre} como perdida? El capital ($${cap.toLocaleString()}) se descontará del activo.`
+                : `¿Marcar ${a.nombre} como completada?`}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-sm btn-danger" onClick={() => confirmAction === 'delete' ? handleDelete(a.id) : handleStatus(a.id, confirmAction)}>Confirmar</button>
@@ -136,7 +180,7 @@ export default function CuentasPage({ ctx }) {
       </div>
 
       {showForm && (
-        <div className="card" style={{ marginBottom: 14 }}>
+        <div className="card" style={{ marginBottom: 16 }}>
           <div className="card-title">Nueva cuenta</div>
           <div className="g3">
             <div className="fg"><label className="fl">Número</label><input className="fi" value={form.nombre} onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))} placeholder="2815389" /></div>
@@ -152,6 +196,11 @@ export default function CuentasPage({ ctx }) {
             <div className="fg"><label className="fl">Fase</label><input className="fi" value={form.fase} onChange={e => setForm(p => ({ ...p, fase: e.target.value }))} /></div>
             <div className="fg"><label className="fl">Capital ($)</label><input className="fi" type="number" value={form.capital} onChange={e => setForm(p => ({ ...p, capital: parseInt(e.target.value) || 10000 }))}/></div>
             <div className="fg"><label className="fl">DD máx (%)</label><input className="fi" type="number" value={form.dd} onChange={e => setForm(p => ({ ...p, dd: parseFloat(e.target.value) || 8 }))}/></div>
+          </div>
+          <div className="g3">
+            <div className="fg"><label className="fl">Objetivo (%)</label><input className="fi" type="number" value={form.objetivo} onChange={e => setForm(p => ({ ...p, objetivo: parseFloat(e.target.value) || 8 }))}/></div>
+            <div className="fg"><label className="fl">Split (fondeadas)</label><input className="fi" value={form.split} onChange={e => setForm(p => ({ ...p, split: e.target.value }))} placeholder="80/20" /></div>
+            <div className="fg"><label className="fl">Nota</label><input className="fi" value={form.nota} onChange={e => setForm(p => ({ ...p, nota: e.target.value }))} placeholder="Opcional..." /></div>
           </div>
           <button className="btn btn-main" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : 'Guardar cuenta'}</button>
         </div>
