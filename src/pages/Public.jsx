@@ -1,32 +1,53 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { fetchPublicData } from '../lib/sync'
-import { calcMetrics, isQuality, calcSharpe, calcSortino, calcCalmar, calcEdgeRatio, calcExpectancy, calcConsistency, calcAUM, buildEquityCurve, calcStreaks } from '../lib/metrics'
+import { calcMetrics, isQuality, calcSharpe, calcEdgeRatio, calcExpectancy, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, parseFecha } from '../lib/metrics'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 
 const tip = { background: '#0F1828', border: '1px solid #1E3A5F', borderRadius: 10, fontSize: 11, color: '#E2E8F0', padding: '10px 14px' }
 
+function InfoDot({ desc }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <span style={{ position: 'relative', display: 'inline-block', marginLeft: 6, verticalAlign: 'middle' }}>
+      <span
+        onClick={() => setOpen(!open)}
+        style={{ cursor: 'pointer', fontSize: 10, color: '#4A6080', background: '#1A2235', border: '1px solid #2A3A52', borderRadius: '50%', width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, userSelect: 'none' }}
+        title={desc}
+      >···</span>
+      {open && (
+        <div style={{ position: 'absolute', left: '50%', bottom: 22, transform: 'translateX(-50%)', background: '#0F1828', border: '1px solid #1E3A5F', borderRadius: 10, padding: '10px 14px', fontSize: 11, color: '#94A3B8', lineHeight: 1.6, width: 240, zIndex: 100, boxShadow: '0 8px 32px rgba(0,0,0,.6)' }}>
+          {desc}
+          <div style={{ position: 'absolute', left: '50%', bottom: -5, transform: 'translateX(-50%)', width: 8, height: 8, background: '#0F1828', border: '1px solid #1E3A5F', borderBottom: 'none', borderRight: 'none', transform: 'translateX(-50%) rotate(225deg)' }} />
+        </div>
+      )}
+    </span>
+  )
+}
+
 function StatCard({ label, value, desc, color, sub, badge }) {
   return (
-    <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 14, padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
+    <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 14, padding: '16px 18px', position: 'relative', overflow: 'visible' }}>
       <div style={{ position: 'absolute', top: 0, left: 0, width: 3, height: '100%', background: color || '#3B82F6', borderRadius: '14px 0 0 14px' }} />
-      <div style={{ fontSize: 9.5, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.14em', fontWeight: 600, marginBottom: 8 }}>{label}</div>
-      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 28, color: color || '#E2E8F0', lineHeight: 1, marginBottom: 4 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#4A6080', marginBottom: 6 }}>{sub}</div>}
-      {badge && <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, background: 'rgba(59,130,246,.15)', color: '#60A5FA', fontSize: 10, fontWeight: 600, border: '1px solid rgba(59,130,246,.2)', marginBottom: 6 }}>{badge}</span>}
-      <div style={{ fontSize: 10.5, color: '#4A6080', lineHeight: 1.6, borderTop: '1px solid #1A2235', paddingTop: 8, marginTop: 4 }}>{desc}</div>
+      <div style={{ fontSize: 9.5, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.12em', fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center' }}>
+        {label}
+        {desc && <InfoDot desc={desc} />}
+      </div>
+      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: color || '#E2E8F0', lineHeight: 1, marginBottom: 4 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: '#4A6080' }}>{sub}</div>}
+      {badge && <span style={{ display: 'inline-block', marginTop: 4, padding: '2px 8px', borderRadius: 4, background: 'rgba(59,130,246,.15)', color: '#60A5FA', fontSize: 10, fontWeight: 600, border: '1px solid rgba(59,130,246,.2)' }}>{badge}</span>}
     </div>
   )
 }
 
 function SectionTitle({ children, sub }) {
   return (
-    <div style={{ marginBottom: 16, marginTop: 28 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 3, height: 20, background: '#3B82F6', borderRadius: 3 }} />
-        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#E2E8F0' }}>{children}</div>
+    <div style={{ marginBottom: 14, marginTop: 28 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 3, height: 18, background: '#3B82F6', borderRadius: 3, flexShrink: 0 }} />
+        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 17, color: '#E2E8F0' }}>{children}</div>
       </div>
-      {sub && <div style={{ fontSize: 12, color: '#4A6080', marginTop: 4, paddingLeft: 15 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 11.5, color: '#4A6080', marginTop: 3, paddingLeft: 13 }}>{sub}</div>}
     </div>
   )
 }
@@ -36,6 +57,8 @@ export default function Public() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(20)
 
   useEffect(() => {
     if (!userId) { setError('URL inválida.'); setLoading(false); return }
@@ -50,16 +73,13 @@ export default function Public() {
     </div>
   )
   if (error || !data?.profile) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0B0F17', color: '#EF4444', fontSize: 14 }}>{error || 'Perfil no encontrado.'}</div>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0B0F17', color: '#EF4444', fontSize: 14, padding: 20, textAlign: 'center' }}>{error || 'Perfil no encontrado.'}</div>
   )
 
   const { profile, accounts, trades } = data
   const g = calcMetrics(trades)
   const qTrades = trades.filter(isQuality)
   const gQ = calcMetrics(qTrades)
-  const sharpe = calcSharpe(trades)
-  const sortino = calcSortino(trades)
-  const calmar = calcCalmar(trades)
   const edge = calcEdgeRatio(trades)
   const exp = calcExpectancy(trades)
   const cons = calcConsistency(trades)
@@ -69,16 +89,18 @@ export default function Public() {
   const violated = trades.filter(e => !isQuality(e))
   const potentialPnl = parseFloat((g.pnl - violated.reduce((s, e) => s + (e.r_pnl || 0), 0)).toFixed(2))
   const dateStr = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
-
   const dates = trades.map(e => e.fecha).filter(Boolean).sort()
   const firstDate = dates[0] ? new Date(dates[0].split('/').reverse().join('-')) : null
   const spanDays = firstDate ? Math.round((new Date() - firstDate) / 86400000) : 0
 
-  const planData = ['100% exacto','Parcialmente','No cumplía'].map(plan => {
-    const arr = trades.filter(e => e.plan === plan)
-    const g2 = calcMetrics(arr)
-    return { name: plan, trades: arr.length, wr: g2.wr || 0, pnl: parseFloat(g2.pnl.toFixed(2)) }
-  })
+  const accMap = {}
+  accounts.forEach(a => { accMap[String(a.id)] = a })
+
+  const sortedTrades = [...trades]
+    .filter(e => ['Win','Loss','Breakeven'].includes(e.resultado))
+    .sort((a, b) => { const da = parseFecha(a.fecha), db = parseFecha(b.fecha); return db - da })
+  const totalPages = Math.ceil(sortedTrades.length / perPage)
+  const visibleTrades = sortedTrades.slice((page - 1) * perPage, page * perPage)
 
   const monthMap = {}
   trades.forEach(t => {
@@ -94,32 +116,55 @@ export default function Public() {
     return { name: mn[parseInt(k.split('-')[1]) - 1], pnl: parseFloat(g2.pnl.toFixed(2)) }
   })
 
-  const ratingColor = (v, good, great) => v >= great ? '#22C55E' : v >= good ? '#F59E0B' : '#EF4444'
+  const heatmapTrades = [...trades]
+    .filter(e => ['Win','Loss','Breakeven'].includes(e.resultado))
+    .sort((a, b) => { const da = parseFecha(a.fecha), db = parseFecha(b.fecha); return da - db })
+    .slice(-48)
+
+  // Responsive helpers
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 700
+  const px = isMobile ? '16px' : '60px'
+  const gap = isMobile ? 10 : 12
 
   return (
     <div style={{ minHeight: '100vh', background: '#0B0F17', fontFamily: "'DM Sans',system-ui,sans-serif", color: '#E2E8F0' }}>
+      <style>{`
+        @media (max-width: 700px) {
+          .pub-hero { padding: 28px 16px 32px !important; }
+          .pub-hero-stats { flex-direction: column !important; gap: 16px !important; }
+          .pub-hero-stat { padding-right: 0 !important; margin-right: 0 !important; border-right: none !important; border-bottom: 1px solid rgba(255,255,255,.07); padding-bottom: 12px !important; }
+          .pub-hero-stat:last-child { border-bottom: none !important; }
+          .pub-content { padding: 16px 16px 60px !important; }
+          .pub-grid-2 { grid-template-columns: 1fr !important; }
+          .pub-grid-3 { grid-template-columns: 1fr 1fr !important; }
+          .pub-grid-6 { grid-template-columns: 1fr 1fr !important; }
+          .pub-table-wrap { overflow-x: auto !important; }
+          .pub-hero-val-big { font-size: 36px !important; }
+          .pub-hero-val { font-size: 22px !important; }
+          .pub-hero-title { font-size: 32px !important; }
+        }
+        @media (max-width: 420px) {
+          .pub-grid-3 { grid-template-columns: 1fr !important; }
+          .pub-grid-6 { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
 
-      {/* ── HERO ── */}
-      <div style={{ background: 'linear-gradient(135deg, #060D1F 0%, #0A1628 40%, #0F1E38 100%)', borderBottom: '1px solid #1E3A5F', padding: '48px 60px 52px', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: -80, right: -80, width: 360, height: 360, borderRadius: '50%', background: 'radial-gradient(circle, rgba(59,130,246,.08) 0%, transparent 70%)' }} />
-        <div style={{ position: 'absolute', bottom: -40, left: '30%', width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(34,197,94,.04) 0%, transparent 70%)' }} />
+      {/* HERO */}
+      <div className="pub-hero" style={{ background: 'linear-gradient(135deg, #060D1F 0%, #0A1628 40%, #0F1E38 100%)', borderBottom: '1px solid #1E3A5F', padding: '48px 60px 52px', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: -80, right: -80, width: 320, height: 320, borderRadius: '50%', background: 'radial-gradient(circle, rgba(59,130,246,.08) 0%, transparent 70%)' }} />
         <div style={{ position: 'relative', maxWidth: 1100, margin: '0 auto' }}>
-          {/* Badge */}
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, background: 'rgba(59,130,246,.12)', border: '1px solid rgba(59,130,246,.25)', marginBottom: 20 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, background: 'rgba(59,130,246,.12)', border: '1px solid rgba(59,130,246,.25)', marginBottom: 18 }}>
             <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#22C55E', boxShadow: '0 0 6px #22C55E' }} />
-            <span style={{ fontSize: 11, color: '#60A5FA', fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase' }}>Track Record Verificado · {dateStr}</span>
+            <span style={{ fontSize: 10, color: '#60A5FA', fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase' }}>Track Record Verificado · {dateStr}</span>
           </div>
-
-          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 44, color: '#fff', lineHeight: 1, marginBottom: 6 }}>
+          <div className="pub-hero-title" style={{ fontFamily: "'DM Serif Display',serif", fontSize: 40, color: '#fff', lineHeight: 1, marginBottom: 4 }}>
             Edge<em style={{ color: '#60A5FA', fontStyle: 'italic' }}>Log</em>
           </div>
-          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: 'rgba(96,165,250,.65)', marginBottom: 6 }}>{profile.name || 'Trader'}</div>
-          <div style={{ fontSize: 13, color: '#4A6080', marginBottom: 36 }}>
-            {profile.metodologia || 'Smart Money Concepts'} · {profile.par || 'EURUSD'} · {profile.sesion || 'Londres / NY'} · {spanDays} días operando
+          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color: 'rgba(96,165,250,.65)', marginBottom: 4 }}>{profile.name || 'Trader'}</div>
+          <div style={{ fontSize: 12, color: '#4A6080', marginBottom: 28, lineHeight: 1.6 }}>
+            {profile.metodologia || 'Smart Money Concepts'} · {profile.par || 'EURUSD'}<br style={{ display: 'none' }} /> · {profile.sesion || 'Londres / NY'} · {spanDays} días operando
           </div>
-
-          {/* Hero stats */}
-          <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap' }}>
+          <div className="pub-hero-stats" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {[
               { label: 'Retorno total', value: (g.pnl >= 0 ? '+' : '') + g.pnl.toFixed(2) + '%', color: g.pnl >= 0 ? '#22C55E' : '#EF4444', big: true },
               { label: 'Win rate', value: g.wr !== null ? g.wr + '%' : '—', color: g.wr >= 50 ? '#22C55E' : '#EF4444' },
@@ -128,34 +173,30 @@ export default function Public() {
               { label: 'Trades', value: String(g.tr), color: '#E2E8F0' },
               { label: 'Capital activo', value: '$' + aum.total.toLocaleString(), color: '#60A5FA' },
             ].map(({ label, value, color, big }, i) => (
-              <div key={label} style={{ paddingRight: 36, marginRight: 36, borderRight: i < 5 ? '1px solid rgba(255,255,255,.07)' : 'none', marginBottom: 12 }}>
-                <div style={{ fontSize: 10, color: 'rgba(96,165,250,.4)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 5 }}>{label}</div>
-                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: big ? 44 : 28, color, lineHeight: 1 }}>{value}</div>
+              <div key={label} className="pub-hero-stat" style={{ paddingRight: 28, marginRight: 28, borderRight: i < 5 ? '1px solid rgba(255,255,255,.07)' : 'none', marginBottom: 8 }}>
+                <div style={{ fontSize: 9.5, color: 'rgba(96,165,250,.4)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 4 }}>{label}</div>
+                <div className={big ? 'pub-hero-val-big' : 'pub-hero-val'} style={{ fontFamily: "'DM Serif Display',serif", fontSize: big ? 40 : 26, color, lineHeight: 1 }}>{value}</div>
               </div>
             ))}
           </div>
-
-          {/* Bio */}
           {profile.bio && (
-            <div style={{ marginTop: 24, padding: '14px 18px', background: 'rgba(255,255,255,.04)', borderRadius: 10, borderLeft: '3px solid #3B82F6', fontSize: 13, color: '#94A3B8', lineHeight: 1.7, maxWidth: 700 }}>
+            <div style={{ marginTop: 20, padding: '12px 16px', background: 'rgba(255,255,255,.04)', borderRadius: 10, borderLeft: '3px solid #3B82F6', fontSize: 13, color: '#94A3B8', lineHeight: 1.7, maxWidth: 680 }}>
               {profile.bio}
             </div>
           )}
         </div>
       </div>
 
-      {/* ── CONTENT ── */}
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 60px 80px' }}>
+      {/* CONTENT */}
+      <div className="pub-content" style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 60px 80px' }}>
 
         {/* Equity curve */}
-        <SectionTitle sub="Evolución del P&L acumulado desde el primer trade. Cada punto representa el cierre de una operación.">
-          Equity Curve
-        </SectionTitle>
-        <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, padding: '20px 24px', marginBottom: 8 }}>
-          <ResponsiveContainer width="100%" height={300}>
+        <SectionTitle sub="Evolución del P&L acumulado desde el primer trade.">Equity Curve</SectionTitle>
+        <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, padding: '16px 20px', marginBottom: 8 }}>
+          <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={equityData}>
               <defs>
-                <linearGradient id="pnlGradPub2" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="pnlGradPub" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
                   <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
                 </linearGradient>
@@ -164,191 +205,97 @@ export default function Public() {
               <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
               <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + '%'} />
               <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'P&L acum.']} labelStyle={{ color: '#60A5FA', fontWeight: 600 }} />
-              <Area type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2.5} fill="url(#pnlGradPub2)" dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#0B0F17', strokeWidth: 2 }} />
+              <Area type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2.5} fill="url(#pnlGradPub)" dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#0B0F17', strokeWidth: 2 }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
-        <div style={{ display: 'flex', gap: 20, fontSize: 11, color: '#4A6080', marginBottom: 8 }}>
-          <span>🟢 {g.w} operaciones ganadoras</span>
-          <span>🔴 {g.l} operaciones perdedoras</span>
+        <div style={{ display: 'flex', gap: 16, fontSize: 11, color: '#4A6080', marginBottom: 4, flexWrap: 'wrap' }}>
+          <span>🟢 {g.w} ganadores</span>
+          <span>🔴 {g.l} perdedores</span>
           <span>🟡 {trades.filter(t => t.resultado === 'Breakeven').length} breakeven</span>
-          <span>📅 {spanDays} días de historial</span>
+          <span>📅 {spanDays} días</span>
         </div>
 
         {/* Métricas de rendimiento */}
-        <SectionTitle sub="Indicadores clave que miden la calidad y consistencia de la operativa.">
-          Métricas de rendimiento
-        </SectionTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 6 }}>
-          <StatCard
-            label="Profitability Factor"
-            value={g.pf !== null ? g.pf.toFixed(2) : '—'}
-            color={g.pf >= 1.5 ? '#22C55E' : g.pf >= 1 ? '#F59E0B' : '#EF4444'}
-            sub={g.pf >= 1.5 ? 'Excelente' : g.pf >= 1 ? 'Positivo' : 'Negativo'}
-            desc="Relación entre ganancias brutas y pérdidas brutas. Un PF mayor a 1.5 indica que el sistema genera más de $1.50 por cada $1 perdido. Considerado sólido desde 1.5 y excelente sobre 2.0."
-          />
-          <StatCard
-            label="Win Rate Global"
-            value={g.wr !== null ? g.wr + '%' : '—'}
-            color={g.wr >= 50 ? '#22C55E' : '#EF4444'}
-            sub={`${g.w}W · ${g.l}L · ${g.tr} trades`}
-            desc="Porcentaje de operaciones cerradas con ganancia sobre el total de operaciones. Un WR alto por sí solo no garantiza rentabilidad; importa combinarlo con el R:R."
-          />
-          <StatCard
-            label="WR Disciplinado ✦"
-            value={gQ.wr !== null ? gQ.wr + '%' : '—'}
-            color="#EAB308"
-            sub={`${qTrades.length} trades con plan completo`}
-            desc="Win rate calculado solo sobre operaciones donde se respetó el plan de trading, se operó con calma y sin sobreoperar. Refleja el potencial real del sistema cuando se ejecuta correctamente."
-          />
-          <StatCard
-            label="R:R Real Promedio"
-            value={g.avgRR !== null ? '1:' + g.avgRR.toFixed(2) : '—'}
-            color={g.avgRR >= 2 ? '#22C55E' : g.avgRR >= 1.5 ? '#F59E0B' : '#EF4444'}
-            sub="sobre operaciones ganadoras"
-            desc="Risk:Reward real obtenido promediando los wins. Indica cuántas veces el profit supera al riesgo asumido en operaciones exitosas. Un R:R de 1:2 significa que gana el doble de lo que arriesga."
-          />
-          <StatCard
-            label="Expectancy por Trade"
-            value={exp !== null ? (exp > 0 ? '+' : '') + exp + '%' : '—'}
-            color={exp > 0 ? '#22C55E' : '#EF4444'}
-            sub={exp > 0 ? 'Sistema con edge positivo' : 'Sistema sin edge'}
-            desc="Ganancia o pérdida promedio esperada por cada operación, combinando WR y R:R. Si es positiva, el sistema tiene ventaja estadística y es rentable a largo plazo."
-          />
-          <StatCard
-            label="Consistencia mensual"
-            value={cons.pct !== null ? cons.pct + '%' : '—'}
-            color={cons.pct >= 70 ? '#22C55E' : cons.pct >= 50 ? '#F59E0B' : '#EF4444'}
-            sub={`${cons.months.filter(m => m.positive).length} de ${cons.months.length} meses positivos`}
-            desc="Porcentaje de meses cerrados en positivo. Una consistencia alta (>70%) indica que el sistema genera resultados estables mes a mes, no solo esporádicamente."
-          />
+        <SectionTitle sub="Indicadores clave que miden la calidad y consistencia de la operativa.">Métricas de rendimiento</SectionTitle>
+        <div className="pub-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap, marginBottom: 6 }}>
+          <StatCard label="Profitability Factor" value={g.pf !== null ? g.pf.toFixed(2) : '—'} color={g.pf >= 1.5 ? '#22C55E' : g.pf >= 1 ? '#F59E0B' : '#EF4444'} sub={g.pf >= 1.5 ? 'Excelente' : g.pf >= 1 ? 'Positivo' : 'Negativo'} desc="Relación entre ganancias brutas y pérdidas brutas. Un PF mayor a 1.5 indica que el sistema genera más de $1.50 por cada $1 perdido. Sólido desde 1.5, excelente sobre 2.0." />
+          <StatCard label="Win Rate Global" value={g.wr !== null ? g.wr + '%' : '—'} color={g.wr >= 50 ? '#22C55E' : '#EF4444'} sub={`${g.w}W · ${g.l}L`} desc="Porcentaje de operaciones cerradas con ganancia. Un WR alto solo no garantiza rentabilidad — importa combinarlo con el R:R promedio obtenido." />
+          <StatCard label="WR Disciplinado ✦" value={gQ.wr !== null ? gQ.wr + '%' : '—'} color="#EAB308" sub={`${qTrades.length} trades con plan`} desc="Win rate calculado solo sobre operaciones donde se respetó el plan y se operó con calma. Refleja el potencial real del sistema ejecutado correctamente." />
+          <StatCard label="R:R Real Promedio" value={g.avgRR !== null ? '1:' + g.avgRR.toFixed(2) : '—'} color={g.avgRR >= 2 ? '#22C55E' : g.avgRR >= 1.5 ? '#F59E0B' : '#EF4444'} sub="sobre trades ganadores" desc="Risk:Reward real promedio en operaciones exitosas. Un R:R de 1:2 significa que gana el doble de lo que arriesga. Permite ser rentable incluso con menos del 50% de wins." />
+          <StatCard label="Expectancy por Trade" value={exp !== null ? (exp > 0 ? '+' : '') + exp + '%' : '—'} color={exp > 0 ? '#22C55E' : '#EF4444'} sub={exp > 0 ? 'Edge positivo' : 'Sin edge'} desc="Ganancia o pérdida promedio esperada por operación, combinando WR y R:R. Si es positiva, el sistema tiene ventaja estadística y es rentable a largo plazo." />
+          <StatCard label="Consistencia mensual" value={cons.pct !== null ? cons.pct + '%' : '—'} color={cons.pct >= 70 ? '#22C55E' : cons.pct >= 50 ? '#F59E0B' : '#EF4444'} sub={`${cons.months.filter(m => m.positive).length}/${cons.months.length} meses positivos`} desc="Porcentaje de meses cerrados en positivo. Una consistencia alta (+70%) indica resultados estables mes a mes, no solo resultados esporádicos." />
         </div>
 
-        {/* Ratios avanzados */}
-        <SectionTitle sub="Ratios estadísticos utilizados por fondos profesionales para evaluar estrategias.">
-          Ratios estadísticos avanzados
-        </SectionTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 6 }}>
-          <StatCard
-            label="Sharpe Ratio"
-            value={sharpe !== null ? sharpe : '—'}
-            color={ratingColor(sharpe, 0.5, 1.5)}
-            badge={sharpe >= 2 ? 'Excelente' : sharpe >= 1 ? 'Bueno' : sharpe >= 0 ? 'Regular' : 'Negativo'}
-            desc="Mide el retorno ajustado por riesgo total (volatilidad). Compara el retorno promedio con la desviación estándar de los retornos. Mayor a 1 es aceptable, mayor a 2 es excelente para trading discrecional."
-          />
-          <StatCard
-            label="Sortino Ratio"
-            value={sortino !== null ? sortino : '—'}
-            color={ratingColor(sortino, 0.5, 1.5)}
-            badge={sortino >= 2 ? 'Excelente' : sortino >= 1 ? 'Sólido' : sortino >= 0 ? 'Regular' : 'Negativo'}
-            desc="Similar al Sharpe pero solo penaliza la volatilidad negativa (pérdidas), ignorando la volatilidad positiva. Es más relevante para traders porque subidas grandes no son un riesgo real. Mayor a 1 es sólido."
-          />
-          <StatCard
-            label="Calmar Ratio"
-            value={calmar !== null ? calmar : '—'}
-            color={ratingColor(calmar, 0.5, 1.5)}
-            badge={calmar >= 2 ? 'Excelente' : calmar >= 1 ? 'Sólido' : 'Bajo'}
-            desc="Relación entre el retorno total acumulado y el peor drawdown histórico. Indica cuánto se gana en relación a la peor caída sufrida. Un Calmar mayor a 1 significa que el sistema recupera más de lo que cae."
-          />
-          <StatCard
-            label="Edge Ratio"
-            value={edge !== null ? edge + '%' : '—'}
-            color={edge >= 90 ? '#22C55E' : edge >= 75 ? '#F59E0B' : '#EF4444'}
-            badge={edge >= 90 ? 'Ejecución perfecta' : edge >= 75 ? 'Buena ejecución' : 'Mejorable'}
-            desc="Mide la eficiencia de ejecución: qué porcentaje del R:R objetivo se captura en promedio en los trades ganadores. Un 80% significa que si el objetivo es 1:2, el promedio real obtenido es 1:1.6."
-          />
-          <StatCard
-            label="Racha actual"
-            value={streaks.cur > 0 ? `${streaks.cur} ${streaks.type === 'Win' ? 'wins' : 'losses'}` : '—'}
-            color={streaks.type === 'Win' ? '#22C55E' : '#EF4444'}
-            sub={`Máx wins: ${streaks.maxW} · Máx losses: ${streaks.maxL}`}
-            desc="Rachas consecutivas de resultados. Las rachas positivas largas demuestran consistencia del sistema. Las rachas negativas máximas son relevantes para evaluar la resiliencia psicológica del trader."
-          />
-          <StatCard
-            label="Capital gestionado"
-            value={'$' + aum.total.toLocaleString()}
-            color="#60A5FA"
-            sub={`${aum.activeCount} cuentas activas · ${aum.completedCount} completadas`}
-            desc="Total de capital operado activamente en cuentas de prop firms. Refleja la confianza de las firmas en el trader y su capacidad de gestionar múltiples cuentas simultáneamente."
-          />
+        {/* Heatmap */}
+        <SectionTitle sub="Mapa visual de las últimas 48 operaciones. Verde = Win, Rojo = Loss, Amarillo = Breakeven. Opacidad baja = fuera de plan.">Historial visual</SectionTitle>
+        <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, padding: '16px 20px', marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>
+            {heatmapTrades.map((t, i) => {
+              const color = t.resultado === 'Win' ? '#22C55E' : t.resultado === 'Loss' ? '#EF4444' : '#F59E0B'
+              const q = isQuality(t)
+              return (
+                <div key={i}
+                  title={`${t.fecha} · ${t.c_nombre} · ${t.resultado} · ${t.r_pnl >= 0 ? '+' : ''}${t.r_pnl?.toFixed(2)}%`}
+                  style={{ width: 24, height: 24, borderRadius: 5, background: color, opacity: q ? 0.9 : 0.3, cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {!q && <span style={{ fontSize: 7, color: 'rgba(255,255,255,.8)' }}>⚠</span>}
+                </div>
+              )
+            })}
+          </div>
+          <div style={{ display: 'flex', gap: 16, fontSize: 10.5, color: '#4A6080', flexWrap: 'wrap' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: '#22C55E', display: 'inline-block' }} /> Win disciplinado</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: '#EF4444', display: 'inline-block' }} /> Loss</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: '#F59E0B', display: 'inline-block' }} /> Breakeven</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: '#22C55E', opacity: .3, display: 'inline-block' }} /> Fuera de plan ⚠</span>
+          </div>
         </div>
 
         {/* Real vs Potencial */}
-        <SectionTitle sub="Comparación entre el resultado real y el potencial del sistema operando con disciplina perfecta.">
-          Sistema real vs potencial
-        </SectionTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderRadius: 16, overflow: 'hidden', border: '1px solid #1E2A3A', marginBottom: 6 }}>
-          <div style={{ padding: '28px 32px', background: 'linear-gradient(135deg, #0D1B2E, #111827)' }}>
-            <div style={{ fontSize: 10, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 10, fontWeight: 600 }}>Resultado real obtenido</div>
-            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 48, color: g.pnl >= 0 ? '#22C55E' : '#EF4444', lineHeight: 1, marginBottom: 8 }}>{g.pnl >= 0 ? '+' : ''}{g.pnl.toFixed(2)}%</div>
-            <div style={{ fontSize: 12, color: '#4A6080' }}>{g.tr} operaciones · {violated.length} fuera de plan incluidas</div>
+        <SectionTitle sub="Comparación entre el resultado real y el potencial operando con disciplina perfecta.">Sistema real vs potencial</SectionTitle>
+        <div className="pub-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderRadius: 16, overflow: 'hidden', border: '1px solid #1E2A3A', marginBottom: 6 }}>
+          <div style={{ padding: '24px 28px', background: 'linear-gradient(135deg, #0D1B2E, #111827)' }}>
+            <div style={{ fontSize: 9.5, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 8, fontWeight: 600 }}>Resultado real</div>
+            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 40, color: g.pnl >= 0 ? '#22C55E' : '#EF4444', lineHeight: 1, marginBottom: 6 }}>{g.pnl >= 0 ? '+' : ''}{g.pnl.toFixed(2)}%</div>
+            <div style={{ fontSize: 11.5, color: '#4A6080' }}>{g.tr} operaciones · {violated.length} fuera de plan</div>
           </div>
-          <div style={{ padding: '28px 32px', background: 'linear-gradient(135deg, #0F2040, #1A3060)', borderLeft: '1px solid #1E3A5F' }}>
-            <div style={{ fontSize: 10, color: 'rgba(96,165,250,.6)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 10, fontWeight: 600 }}>Potencial del sistema ✦</div>
-            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 48, color: '#E2E8F0', lineHeight: 1, marginBottom: 8 }}>{potentialPnl >= 0 ? '+' : ''}{potentialPnl.toFixed(2)}%</div>
-            <div style={{ fontSize: 12, color: 'rgba(96,165,250,.5)' }}>Solo operaciones con plan 100% respetado</div>
+          <div style={{ padding: '24px 28px', background: 'linear-gradient(135deg, #0F2040, #1A3060)', borderLeft: '1px solid #1E3A5F' }}>
+            <div style={{ fontSize: 9.5, color: 'rgba(96,165,250,.6)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 8, fontWeight: 600 }}>Potencial del sistema ✦</div>
+            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 40, color: '#E2E8F0', lineHeight: 1, marginBottom: 6 }}>{potentialPnl >= 0 ? '+' : ''}{potentialPnl.toFixed(2)}%</div>
+            <div style={{ fontSize: 11.5, color: 'rgba(96,165,250,.5)' }}>Solo con plan 100% respetado</div>
           </div>
-          <div style={{ gridColumn: '1/-1', background: '#1A1400', borderTop: '1px solid #92400E', padding: '16px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ gridColumn: '1/-1', background: '#1A1400', borderTop: '1px solid #92400E', padding: '14px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
             <div>
               <div style={{ fontSize: 12, color: '#F59E0B', fontWeight: 500 }}>Brecha por indisciplina — {violated.length} trades fuera de plan</div>
-              <div style={{ fontSize: 11, color: '#92400E', marginTop: 2 }}>Cada trade fuera de plan tiene un costo estadístico comprobable.</div>
+              <div style={{ fontSize: 10.5, color: '#92400E', marginTop: 2 }}>Cada trade fuera de plan tiene un costo estadístico comprobable.</div>
             </div>
-            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 28, color: '#F59E0B' }}>{parseFloat((potentialPnl - g.pnl).toFixed(2)) >= 0 ? '+' : ''}{parseFloat((potentialPnl - g.pnl).toFixed(2))}%</div>
+            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: '#F59E0B' }}>{parseFloat((potentialPnl - g.pnl).toFixed(2)) >= 0 ? '+' : ''}{parseFloat((potentialPnl - g.pnl).toFixed(2))}%</div>
           </div>
         </div>
 
         {/* P&L mensual */}
-        <SectionTitle sub="Resultado neto de cada mes. La consistencia de meses positivos es más valiosa que meses extraordinarios aislados.">
-          Resultados mensuales
-        </SectionTitle>
-        <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, padding: '20px 24px', marginBottom: 6 }}>
-          <ResponsiveContainer width="100%" height={180}>
+        <SectionTitle sub="Resultado neto de cada mes. La consistencia de meses positivos es más valiosa que resultados extraordinarios aislados.">Resultados mensuales</SectionTitle>
+        <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, padding: '16px 20px', marginBottom: 6 }}>
+          <ResponsiveContainer width="100%" height={160}>
             <BarChart data={monthlyData}>
               <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + '%'} />
               <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'P&L mensual']} />
-              <Bar dataKey="pnl" radius={[6, 6, 0, 0]}>
+              <Bar dataKey="pnl" radius={[5, 5, 0, 0]}>
                 {monthlyData.map((entry, i) => <Cell key={i} fill={entry.pnl >= 0 ? '#22C55E' : '#EF4444'} fillOpacity={0.85} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Plan adherence */}
-        <SectionTitle sub="Análisis de win rate segmentado por el nivel de cumplimiento del plan de trading en cada operación.">
-          Disciplina y adherencia al plan
-        </SectionTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 6 }}>
-          {planData.map(d => {
-            const color = d.name === '100% exacto' ? '#22C55E' : d.name === 'Parcialmente' ? '#F59E0B' : '#EF4444'
-            return (
-              <div key={d.name} style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: `1px solid ${color}33`, borderRadius: 14, padding: '20px' }}>
-                <div style={{ fontSize: 10, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, marginBottom: 10 }}>{d.name}</div>
-                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 36, color, lineHeight: 1, marginBottom: 4 }}>{d.wr}%</div>
-                <div style={{ fontSize: 11, color: '#4A6080', marginBottom: 12 }}>Win rate · {d.trades} trades · {d.pnl >= 0 ? '+' : ''}{d.pnl.toFixed(2)}%</div>
-                <div style={{ height: 4, background: '#1A2235', borderRadius: 10, overflow: 'hidden' }}>
-                  <div style={{ height: 4, borderRadius: 10, width: `${d.wr}%`, background: color, opacity: .85 }} />
-                </div>
-                <div style={{ fontSize: 10.5, color: '#4A6080', marginTop: 10, lineHeight: 1.6 }}>
-                  {d.name === '100% exacto' ? 'Trades donde el setup cumplía todos los criterios del sistema y se ejecutó sin desviaciones.' :
-                   d.name === 'Parcialmente' ? 'Setup válido pero con alguna desviación en la ejecución (entrada anticipada, salida prematura, etc.).' :
-                   'Trades tomados fuera del plan, por impulso o condiciones que no cumplían los criterios del sistema.'}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Account ledger */}
-        <SectionTitle sub="Historial completo por cuenta, incluyendo estado actual, capital gestionado y rendimiento individual.">
-          Track record por cuenta
-        </SectionTitle>
-        <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, overflow: 'hidden', marginBottom: 6 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+        {/* Track record por cuenta */}
+        <SectionTitle sub="Historial completo por cuenta, incluyendo estado actual, capital gestionado y rendimiento individual.">Track record por cuenta</SectionTitle>
+        <div className="pub-table-wrap" style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, overflow: 'auto', marginBottom: 6 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 560 }}>
             <thead>
               <tr style={{ background: '#0A1628' }}>
-                {['Cuenta','Firma','Tipo','Estado','Capital','Trades','Win rate','P&L'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '12px 16px', fontSize: 9.5, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, borderBottom: '1px solid #1E2A3A' }}>{h}</th>
+                {['Cuenta','Tipo','Estado','Capital','Trades','WR','P&L'].map(h => (
+                  <th key={h} style={{ textAlign: 'left', padding: '10px 14px', fontSize: 9, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, borderBottom: '1px solid #1E2A3A', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -361,20 +308,15 @@ export default function Public() {
                 const isF = a.type === 'funded'
                 return (
                   <tr key={a.id} style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,.015)' }}>
-                    <td style={{ padding: '12px 16px', fontWeight: 700, color: '#E2E8F0', borderBottom: '1px solid #1A2235' }}>{a.nombre}</td>
-                    <td style={{ padding: '12px 16px', color: '#94A3B8', borderBottom: '1px solid #1A2235' }}>{a.firma}</td>
-                    <td style={{ padding: '12px 16px', borderBottom: '1px solid #1A2235' }}>
-                      <span style={{ padding: '2px 8px', borderRadius: 4, background: isF ? 'rgba(234,179,8,.1)' : 'rgba(59,130,246,.1)', color: isF ? '#EAB308' : '#60A5FA', fontSize: 10, fontWeight: 600 }}>
-                        {isF ? 'Fondeada' : a.fase || 'Challenge'}
-                      </span>
+                    <td style={{ padding: '10px 14px', fontWeight: 700, color: '#E2E8F0', borderBottom: '1px solid #0F1828', whiteSpace: 'nowrap' }}>{a.nombre}</td>
+                    <td style={{ padding: '10px 14px', borderBottom: '1px solid #0F1828' }}>
+                      <span style={{ padding: '2px 7px', borderRadius: 4, background: isF ? 'rgba(234,179,8,.1)' : 'rgba(59,130,246,.1)', color: isF ? '#EAB308' : '#60A5FA', fontSize: 10, fontWeight: 600 }}>{isF ? 'Fondeada' : a.fase || 'Challenge'}</span>
                     </td>
-                    <td style={{ padding: '12px 16px', borderBottom: '1px solid #1A2235' }}>
-                      <span style={{ color: stColor, fontWeight: 600, fontSize: 11 }}>{stLabel}</span>
-                    </td>
-                    <td style={{ padding: '12px 16px', color: '#94A3B8', borderBottom: '1px solid #1A2235' }}>${(a.capital || 0).toLocaleString()}</td>
-                    <td style={{ padding: '12px 16px', color: '#94A3B8', borderBottom: '1px solid #1A2235' }}>{te.length}</td>
-                    <td style={{ padding: '12px 16px', color: gA.wr >= 50 ? '#22C55E' : '#EF4444', fontWeight: 700, borderBottom: '1px solid #1A2235' }}>{gA.wr !== null ? gA.wr + '%' : '—'}</td>
-                    <td style={{ padding: '12px 16px', fontWeight: 700, color: gA.pnl >= 0 ? '#22C55E' : '#EF4444', borderBottom: '1px solid #1A2235' }}>{gA.pnl >= 0 ? '+' : ''}{gA.pnl.toFixed(2)}%</td>
+                    <td style={{ padding: '10px 14px', borderBottom: '1px solid #0F1828' }}><span style={{ color: stColor, fontWeight: 600, fontSize: 11 }}>{stLabel}</span></td>
+                    <td style={{ padding: '10px 14px', color: '#94A3B8', borderBottom: '1px solid #0F1828', whiteSpace: 'nowrap' }}>${(a.capital || 0).toLocaleString()}</td>
+                    <td style={{ padding: '10px 14px', color: '#94A3B8', borderBottom: '1px solid #0F1828' }}>{te.length}</td>
+                    <td style={{ padding: '10px 14px', color: gA.wr >= 50 ? '#22C55E' : '#EF4444', fontWeight: 700, borderBottom: '1px solid #0F1828' }}>{gA.wr !== null ? gA.wr + '%' : '—'}</td>
+                    <td style={{ padding: '10px 14px', fontWeight: 700, color: gA.pnl >= 0 ? '#22C55E' : '#EF4444', borderBottom: '1px solid #0F1828', whiteSpace: 'nowrap' }}>{gA.pnl >= 0 ? '+' : ''}{gA.pnl.toFixed(2)}%</td>
                   </tr>
                 )
               })}
@@ -382,20 +324,121 @@ export default function Public() {
           </table>
         </div>
 
+        {/* Tabla de operaciones */}
+        <SectionTitle sub="Registro completo de todas las operaciones con fecha, dirección, par, resultado y P&L en % y $.">Registro de operaciones</SectionTitle>
+        <div className="pub-table-wrap" style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, overflow: 'auto', marginBottom: 10 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 600 }}>
+            <thead>
+              <tr style={{ background: '#0A1628' }}>
+                {['Fecha','Cuenta','Dir.','Par','Resultado','Riesgo','R:R','P&L %','P&L $','Plan','Cal.'].map(h => (
+                  <th key={h} style={{ textAlign: 'left', padding: '10px 12px', fontSize: 9, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600, borderBottom: '1px solid #1E2A3A', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleTrades.map((t, idx) => {
+                const acc = accMap[String(t.cid)]
+                const cap = acc?.capital || 10000
+                const pnlUSD = parseFloat((t.r_pnl / 100 * cap).toFixed(2))
+                const q = isQuality(t)
+                const resColor = t.resultado === 'Win' ? '#22C55E' : t.resultado === 'Loss' ? '#EF4444' : '#F59E0B'
+                const dirColor = t.direccion === 'Compra' ? '#22C55E' : t.direccion === 'Venta' ? '#EF4444' : '#4A6080'
+                const planColor = t.plan === '100% exacto' ? '#22C55E' : t.plan === 'Parcialmente' ? '#F59E0B' : '#EF4444'
+                const bg = idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,.015)'
+                return (
+                  <tr key={t.id || idx} style={{ background: bg }}>
+                    <td style={{ padding: '8px 12px', color: '#94A3B8', borderBottom: '1px solid #0F1828', whiteSpace: 'nowrap', fontSize: 11 }}>{t.fecha}</td>
+                    <td style={{ padding: '8px 12px', color: '#60A5FA', borderBottom: '1px solid #0F1828', fontSize: 10.5 }}>{t.c_nombre}</td>
+                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828', whiteSpace: 'nowrap' }}>
+                      {t.direccion && t.direccion !== '—'
+                        ? <span style={{ color: dirColor, fontWeight: 700, fontSize: 11 }}>{t.direccion === 'Compra' ? '▲' : '▼'} {t.direccion}</span>
+                        : <span style={{ color: '#2A3A52' }}>—</span>}
+                    </td>
+                    <td style={{ padding: '8px 12px', color: '#94A3B8', borderBottom: '1px solid #0F1828', fontWeight: 500 }}>{t.par || 'EURUSD'}</td>
+                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828' }}>
+                      <span style={{ color: resColor, fontWeight: 700, fontSize: 11 }}>{t.resultado}</span>
+                    </td>
+                    <td style={{ padding: '8px 12px', color: '#4A6080', borderBottom: '1px solid #0F1828', fontSize: 11 }}>{t.risk || (t.rp ? t.rp + '%' : '—')}</td>
+                    <td style={{ padding: '8px 12px', color: '#94A3B8', borderBottom: '1px solid #0F1828', fontSize: 11 }}>
+                      {t.rr_real && t.rr_real > 0 ? '1:' + parseFloat(t.rr_real).toFixed(1) : t.rr && t.rr > 0 ? '1:' + parseFloat(t.rr).toFixed(1) : '—'}
+                    </td>
+                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828', fontWeight: 700, color: t.r_pnl >= 0 ? '#22C55E' : '#EF4444', fontSize: 12, whiteSpace: 'nowrap' }}>
+                      {t.r_pnl >= 0 ? '+' : ''}{t.r_pnl?.toFixed(2)}%
+                    </td>
+                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828', fontWeight: 700, color: pnlUSD >= 0 ? '#22C55E' : '#EF4444', fontSize: 12, whiteSpace: 'nowrap' }}>
+                      {pnlUSD >= 0 ? '+' : ''}${Math.abs(pnlUSD).toFixed(0)}
+                    </td>
+                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828' }}>
+                      <span style={{ fontSize: 11, color: planColor, fontWeight: 700 }}>
+                        {t.plan === '100% exacto' ? '✓' : t.plan === 'Parcialmente' ? '~' : t.plan === 'No cumplía' ? '✕' : '—'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828', fontSize: 13 }}>
+                      {q ? <span style={{ color: '#22C55E' }}>✦</span> : <span style={{ color: '#EF4444', opacity: .5 }}>⚠</span>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          {/* Paginación */}
+          <div style={{ padding: '12px 16px', borderTop: '1px solid #1E2A3A', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+            {/* Por página */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, color: '#4A6080' }}>Mostrar</span>
+              {[10, 20, 30, 50, 100].map(n => (
+                <button key={n} onClick={() => { setPerPage(n); setPage(1) }}
+                  style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${perPage === n ? '#3B82F6' : '#2A3A52'}`, background: perPage === n ? 'rgba(59,130,246,.15)' : 'transparent', color: perPage === n ? '#60A5FA' : '#4A6080', fontSize: 11.5, fontWeight: perPage === n ? 700 : 400, cursor: 'pointer' }}>
+                  {n}
+                </button>
+              ))}
+              <span style={{ fontSize: 11, color: '#4A6080' }}>· {sortedTrades.length} total</span>
+            </div>
+
+            {/* Páginas */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button onClick={() => setPage(1)} disabled={page === 1}
+                style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #2A3A52', background: 'transparent', color: page === 1 ? '#2A3A52' : '#94A3B8', fontSize: 12, cursor: page === 1 ? 'default' : 'pointer' }}>«</button>
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #2A3A52', background: 'transparent', color: page === 1 ? '#2A3A52' : '#94A3B8', fontSize: 12, cursor: page === 1 ? 'default' : 'pointer' }}>‹ Ant</button>
+
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+                .reduce((acc, p, idx, arr) => {
+                  if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...')
+                  acc.push(p)
+                  return acc
+                }, [])
+                .map((p, i) => p === '...'
+                  ? <span key={'e' + i} style={{ fontSize: 11, color: '#2A3A52', padding: '0 4px' }}>···</span>
+                  : <button key={p} onClick={() => setPage(p)}
+                      style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${page === p ? '#3B82F6' : '#2A3A52'}`, background: page === p ? 'rgba(59,130,246,.15)' : 'transparent', color: page === p ? '#60A5FA' : '#94A3B8', fontSize: 12, fontWeight: page === p ? 700 : 400, cursor: 'pointer' }}>{p}</button>
+                )}
+
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #2A3A52', background: 'transparent', color: page === totalPages ? '#2A3A52' : '#94A3B8', fontSize: 12, cursor: page === totalPages ? 'default' : 'pointer' }}>Sig ›</button>
+              <button onClick={() => setPage(totalPages)} disabled={page === totalPages}
+                style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #2A3A52', background: 'transparent', color: page === totalPages ? '#2A3A52' : '#94A3B8', fontSize: 12, cursor: page === totalPages ? 'default' : 'pointer' }}>»</button>
+            </div>
+          </div>
+        </div>
+        <div style={{ fontSize: 10.5, color: '#4A6080', marginBottom: 24, lineHeight: 1.7 }}>
+          ✓ Plan exacto · ~ Parcialmente · ✕ Fuera de plan · ✦ Trade disciplinado · ⚠ Fuera de plan<br />
+          P&L $ calculado sobre el capital de la cuenta al momento del trade
+        </div>
+
         {/* Footer */}
-        <div style={{ marginTop: 40, padding: '24px 28px', background: 'linear-gradient(135deg, #0D1B2E, #111827)', borderRadius: 14, border: '1px solid #1E2A3A' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #0D1B2E, #111827)', borderRadius: 14, border: '1px solid #1E2A3A' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
             <div>
-              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color: '#E2E8F0', marginBottom: 4 }}>
-                Edge<em style={{ color: '#60A5FA', fontStyle: 'italic' }}>Log</em>
-              </div>
-              <div style={{ fontSize: 11.5, color: '#4A6080', lineHeight: 1.7 }}>
-                Track record generado automáticamente. Cada operación incluye trazabilidad completa:<br />fecha, cuenta, riesgo arriesgado, resultado, estado emocional y cumplimiento del plan.
+              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#E2E8F0', marginBottom: 4 }}>Edge<em style={{ color: '#60A5FA', fontStyle: 'italic' }}>Log</em></div>
+              <div style={{ fontSize: 11, color: '#4A6080', lineHeight: 1.7 }}>
+                Track record generado automáticamente. Trazabilidad completa por operación.
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 11, color: '#4A6080' }}>Generado el {dateStr}</div>
-              <div style={{ fontSize: 11, color: '#4A6080', marginTop: 2 }}>{g.tr} operaciones · {spanDays} días de historial</div>
+              <div style={{ fontSize: 11, color: '#4A6080', marginTop: 2 }}>{g.tr} operaciones · {spanDays} días</div>
             </div>
           </div>
         </div>
