@@ -19,7 +19,14 @@ export default function HistorialPage({ ctx }) {
 
   const cuentas = [...new Set(trades.map(t => t.c_nombre).filter(Boolean))].sort()
 
-  const filtered = trades.filter(t => {
+  // Ordenar de más reciente a más antiguo
+  const sorted = [...trades].sort((a, b) => {
+    const da = a.fecha?.split('/').reverse().join('-') || ''
+    const db = b.fecha?.split('/').reverse().join('-') || ''
+    return db > da ? 1 : db < da ? -1 : 0
+  })
+
+  const filtered = sorted.filter(t => {
     if (filters.cuenta && t.c_nombre !== filters.cuenta) return false
     if (filters.resultado && t.resultado !== filters.resultado) return false
     if (filters.plan && t.plan !== filters.plan) return false
@@ -51,7 +58,7 @@ export default function HistorialPage({ ctx }) {
       <div className="page-header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
         <div>
           <div className="page-title">Historial de <em>entradas</em></div>
-          <div className="page-sub">{filtered.length} de {trades.length} entradas</div>
+          <div className="page-sub">{filtered.length} de {trades.length} entradas · más recientes primero</div>
         </div>
       </div>
 
