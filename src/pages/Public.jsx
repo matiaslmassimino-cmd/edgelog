@@ -461,49 +461,6 @@ export default function Public() {
           </ResponsiveContainer>
         </div>
 
-        {/* Track record por cuenta */}
-        <SectionTitle sub="Historial completo por cuenta.">Track record por cuenta</SectionTitle>
-        <div className="pub-table-wrap" style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, overflow: 'auto', marginBottom: 6 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 500 }}>
-            <thead>
-              <tr style={{ background: '#0A1628' }}>
-                {['Cuenta','Tipo','Estado','Capital','Trades','WR','P&L'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '10px 14px', fontSize: 9, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, borderBottom: '1px solid #1E2A3A', whiteSpace: 'nowrap' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {accounts
-              .filter(a => trades.filter(e => String(e.cid) === String(a.id)).length > 0)
-              .sort((a, b) => a.id - b.id)
-              .map((a, idx) => {
-                const te = trades.filter(e => String(e.cid) === String(a.id))
-                const gA = calcMetrics(te)
-                const stLabel = a.status === 'completed' ? '✓ Completada' : a.status === 'perdida' ? '✕ Perdida' : '● Activa'
-                const stColor = a.status === 'completed' ? '#60A5FA' : a.status === 'perdida' ? '#EF4444' : '#22C55E'
-                const isF = a.type === 'funded'
-                return (
-                  <tr key={a.id} style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,.015)' }}>
-                    <td style={{ padding: '10px 14px', fontWeight: 700, color: '#E2E8F0', borderBottom: '1px solid #0F1828', whiteSpace: 'nowrap' }}>{a.nombre}</td>
-                    <td style={{ padding: '10px 14px', borderBottom: '1px solid #0F1828' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <span style={{ padding: '2px 7px', borderRadius: 4, background: isF ? 'rgba(234,179,8,.1)' : 'rgba(59,130,246,.1)', color: isF ? '#EAB308' : '#60A5FA', fontSize: 10, fontWeight: 600 }}>{isF ? 'Fondeada' : a.fase || 'Challenge'}</span>
-                        {a.parent && <span style={{ fontSize: 9.5, color: '#4A6080' }}>← {accounts.find(x => String(x.id) === String(a.parent))?.nombre || ''}</span>}
-                        {a.child && <span style={{ fontSize: 9.5, color: '#4A6080' }}>→ {accounts.find(x => String(x.id) === String(a.child))?.nombre || ''}</span>}
-                      </div>
-                    </td>
-                    <td style={{ padding: '10px 14px', borderBottom: '1px solid #0F1828' }}><span style={{ color: stColor, fontWeight: 600, fontSize: 11 }}>{stLabel}</span></td>
-                    <td style={{ padding: '10px 14px', color: '#94A3B8', borderBottom: '1px solid #0F1828', whiteSpace: 'nowrap' }}>${(a.capital || 0).toLocaleString()}</td>
-                    <td style={{ padding: '10px 14px', color: '#94A3B8', borderBottom: '1px solid #0F1828' }}>{te.length}</td>
-                    <td style={{ padding: '10px 14px', color: gA.wr >= 50 ? '#22C55E' : '#EF4444', fontWeight: 700, borderBottom: '1px solid #0F1828' }}>{gA.wr !== null ? gA.wr + '%' : '—'}</td>
-                    <td style={{ padding: '10px 14px', fontWeight: 700, color: gA.pnl >= 0 ? '#22C55E' : '#EF4444', borderBottom: '1px solid #0F1828', whiteSpace: 'nowrap' }}>{gA.pnl >= 0 ? '+' : ''}{gA.pnl.toFixed(2)}%</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-
         {/* Tabla de operaciones */}
         <SectionTitle sub="Registro completo de todas las operaciones con fecha, dirección, par, resultado y P&L en % y $.">Registro de operaciones</SectionTitle>
         <div className="pub-table-wrap" style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, overflow: 'auto', marginBottom: 10 }}>
