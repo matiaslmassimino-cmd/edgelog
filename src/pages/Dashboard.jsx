@@ -69,6 +69,15 @@ export default function Dashboard({ ctx }) {
     return { target, pct: Math.min(Math.round(cur / target * 100), 100) }
   }
 
+  // Últimas 5 entradas ordenadas por fecha más reciente
+  const lastTrades = [...trades]
+    .sort((a, b) => {
+      const da = a.fecha?.split('/').reverse().join('-') || ''
+      const db = b.fecha?.split('/').reverse().join('-') || ''
+      return db > da ? 1 : db < da ? -1 : 0
+    })
+    .slice(0, 5)
+
   return (
     <div>
       <div className="page-header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
@@ -143,7 +152,7 @@ export default function Dashboard({ ctx }) {
         </div>
       </div>
 
-      {/* Equity curve con área */}
+      {/* Equity curve */}
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="card-title">Equity curve — P&L acumulado</div>
         {equityData.length <= 1 ? <div className="empty"><div className="empty-icon">∿</div><p>Sin datos aún.</p></div> : (
@@ -165,10 +174,11 @@ export default function Dashboard({ ctx }) {
         )}
       </div>
 
+      {/* Últimas 5 entradas — ordenadas por fecha */}
       <div className="card">
         <div className="card-title">Últimas entradas</div>
-        {trades.length === 0 ? <div className="empty"><p>Sin entradas.</p></div> :
-          trades.slice(0, 5).map(t => {
+        {lastTrades.length === 0 ? <div className="empty"><p>Sin entradas.</p></div> :
+          lastTrades.map(t => {
             const q = isQuality(t)
             const dotColor = t.resultado === 'Win' ? 'var(--green)' : t.resultado === 'Loss' ? 'var(--red)' : 'var(--amber)'
             return (
