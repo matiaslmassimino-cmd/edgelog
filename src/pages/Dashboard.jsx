@@ -124,7 +124,7 @@ export default function Dashboard({ ctx }) {
                   <div style={{ width: 3, height: 30, background: a.type === 'funded' ? 'var(--gold)' : 'var(--accent)', borderRadius: 3, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{a.nombre}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>{a.firma} · {a.fase || 'Fondeada'}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>{a.firma} · {a.type === 'funded' ? 'Fondeada' : a.fase || 'Challenge'}</div>
                     <div className="pb" style={{ marginTop: 4 }}>
                       <div className="pf" style={{ width: `${pct}%`, background: pnl >= 0 ? 'var(--green)' : 'var(--red)' }} />
                     </div>
