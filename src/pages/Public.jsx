@@ -473,7 +473,10 @@ export default function Public() {
               </tr>
             </thead>
             <tbody>
-              {accounts.filter(a => trades.filter(e => String(e.cid) === String(a.id)).length > 0).map((a, idx) => {
+              {accounts
+              .filter(a => trades.filter(e => String(e.cid) === String(a.id)).length > 0)
+              .sort((a, b) => a.id - b.id)
+              .map((a, idx) => {
                 const te = trades.filter(e => String(e.cid) === String(a.id))
                 const gA = calcMetrics(te)
                 const stLabel = a.status === 'completed' ? '✓ Completada' : a.status === 'perdida' ? '✕ Perdida' : '● Activa'
@@ -483,7 +486,11 @@ export default function Public() {
                   <tr key={a.id} style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,.015)' }}>
                     <td style={{ padding: '10px 14px', fontWeight: 700, color: '#E2E8F0', borderBottom: '1px solid #0F1828', whiteSpace: 'nowrap' }}>{a.nombre}</td>
                     <td style={{ padding: '10px 14px', borderBottom: '1px solid #0F1828' }}>
-                      <span style={{ padding: '2px 7px', borderRadius: 4, background: isF ? 'rgba(234,179,8,.1)' : 'rgba(59,130,246,.1)', color: isF ? '#EAB308' : '#60A5FA', fontSize: 10, fontWeight: 600 }}>{isF ? 'Fondeada' : a.fase || 'Challenge'}</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <span style={{ padding: '2px 7px', borderRadius: 4, background: isF ? 'rgba(234,179,8,.1)' : 'rgba(59,130,246,.1)', color: isF ? '#EAB308' : '#60A5FA', fontSize: 10, fontWeight: 600 }}>{isF ? 'Fondeada' : a.fase || 'Challenge'}</span>
+                        {a.parent && <span style={{ fontSize: 9.5, color: '#4A6080' }}>← {accounts.find(x => String(x.id) === String(a.parent))?.nombre || ''}</span>}
+                        {a.child && <span style={{ fontSize: 9.5, color: '#4A6080' }}>→ {accounts.find(x => String(x.id) === String(a.child))?.nombre || ''}</span>}
+                      </div>
                     </td>
                     <td style={{ padding: '10px 14px', borderBottom: '1px solid #0F1828' }}><span style={{ color: stColor, fontWeight: 600, fontSize: 11 }}>{stLabel}</span></td>
                     <td style={{ padding: '10px 14px', color: '#94A3B8', borderBottom: '1px solid #0F1828', whiteSpace: 'nowrap' }}>${(a.capital || 0).toLocaleString()}</td>
