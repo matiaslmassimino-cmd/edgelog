@@ -35,7 +35,7 @@ function KPICard({ label, value, sub, pos, neg, dark, gold, goalBar }) {
 }
 
 export default function Dashboard({ ctx }) {
-  const { trades, accounts } = ctx
+  const { trades, accounts, withdrawals } = ctx
   const [checklist, setChecklist] = useState(() => {
     try { return JSON.parse(localStorage.getItem('el_cl') || '[]') } catch { return [] }
   })
@@ -60,8 +60,24 @@ export default function Dashboard({ ctx }) {
     localStorage.setItem('el_cl', JSON.stringify(next))
   }
 
+  // P&L por cuenta — fondeadas muestran ciclo actual, challenges muestran histórico
   function accPnl(a) {
-    return trades.filter(e => String(e.cid) === String(a.id)).reduce((s, e) => s + (e.r_pnl || 0), 0)
+    const te = trades.filter(e => String(e.cid) === String(a.id))
+    if (a.type === 'funded') {
+      const wds = withdrawals?.[String(a.id)] || []
+      const lastWD = [...wds].sort((x, y) => {
+        const dx = x.fecha?.split('/').reverse().join('-') || ''
+        const dy = y.fecha?.split('/').reverse().join('-') || ''
+        return dx > dy ? 1 : dx < dy ? -1 : 0
+      }).slice(-1)[0]
+      if (!lastWD) return te.reduce((s, e) => s + (e.r_pnl || 0), 0)
+      const wdDate = lastWD.fecha?.split('/').reverse().join('-') || ''
+      return te.filter(e => {
+        const d = e.fecha?.split('/').reverse().join('-') || ''
+        return d > wdDate
+      }).reduce((s, e) => s + (e.r_pnl || 0), 0)
+    }
+    return te.reduce((s, e) => s + (e.r_pnl || 0), 0)
   }
 
   function goalBarData(cur, target) {
@@ -124,9 +140,12 @@ export default function Dashboard({ ctx }) {
                   <div style={{ width: 3, height: 30, background: a.type === 'funded' ? 'var(--gold)' : 'var(--accent)', borderRadius: 3, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{a.nombre}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>{a.firma} · {a.type === 'funded' ? 'Fondeada' : a.fase || 'Challenge'}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+                      {a.firma} · {a.type === 'funded' ? 'Fondeada' : a.fase || 'Challenge'}
+                      {a.type === 'funded' && <span style={{ color: 'var(--text3)', fontSize: 9.5 }}> · ciclo actual</span>}
+                    </div>
                     <div className="pb" style={{ marginTop: 4 }}>
-                      <div className="pf" style={{ width: `${pct}%`, background: pnl >= 0 ? 'var(--green)' : 'var(--red)' }} />
+                      <div className="pf" style={{ width: `${Math.abs(pct)}%`, background: pnl >= 0 ? 'var(--green)' : 'var(--red)' }} />
                     </div>
                   </div>
                   <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 16, fontWeight: 600, color: pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>
@@ -174,7 +193,7 @@ export default function Dashboard({ ctx }) {
         )}
       </div>
 
-      {/* Últimas 5 entradas — ordenadas por fecha */}
+      {/* Últimas 5 entradas ordenadas por fecha */}
       <div className="card">
         <div className="card-title">Últimas entradas</div>
         {lastTrades.length === 0 ? <div className="empty"><p>Sin entradas.</p></div> :
