@@ -195,6 +195,30 @@ export async function bulkImportCSV(userId, csvText, existingAccounts) {
   return { tradesImported: trades.length, newAccounts }
 }
 
+// ── NUEVA FUNCIÓN: busca perfil por slug ──
+export async function fetchPublicDataBySlug(slug) {
+  const { data: profileData, error: profileError } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('public_slug', slug)
+    .single()
+
+  if (profileError || !profileData) throw new Error('Track record no encontrado.')
+
+  const userId = profileData.id
+
+  const [accountsRes, tradesRes] = await Promise.all([
+    supabase.from('accounts').select('*').eq('user_id', userId).order('id'),
+    supabase.from('trades').select('*').eq('user_id', userId).order('fecha')
+  ])
+
+  return {
+    profile: profileData,
+    accounts: accountsRes.data || [],
+    trades: tradesRes.data || []
+  }
+}
+
 export async function fetchPublicData(userId) {
   const [profileRes, accountsRes, tradesRes] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', userId).single(),
