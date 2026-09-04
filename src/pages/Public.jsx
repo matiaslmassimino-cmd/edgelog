@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
-import { fetchPublicData } from '../lib/sync'
+import { fetchPublicDataBySlug } from '../lib/sync'
 import { calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 
@@ -232,7 +232,7 @@ function PeriodExplorer({ trades }) {
 
 // ── MAIN PUBLIC PAGE ──
 export default function Public() {
-  const { userId } = useParams()
+  const { slug } = useParams()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -240,11 +240,11 @@ export default function Public() {
   const [perPage, setPerPage] = useState(20)
 
   useEffect(() => {
-    if (!userId) { setError('URL inválida.'); setLoading(false); return }
-    fetchPublicData(userId)
+    if (!slug) { setError('URL inválida.'); setLoading(false); return }
+    fetchPublicDataBySlug(slug)
       .then(d => { setData(d); setLoading(false) })
       .catch(e => { setError(e.message); setLoading(false) })
-  }, [userId])
+  }, [slug])
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0B0F17', fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#E2E8F0' }}>
