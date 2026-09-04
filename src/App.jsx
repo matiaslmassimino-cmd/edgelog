@@ -28,7 +28,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={session ? <Navigate to="/dashboard" /> : <Login />} />
         <Route path="/*" element={session ? <AppShell session={session} /> : <Navigate to="/login" />} />
-        <Route path="/public/:userId" element={<Public />} />
+        {/* Nuevo link público por slug — el link viejo con userId ya no funciona */}
+        <Route path="/p/:slug" element={<Public />} />
       </Routes>
     </HashRouter>
   )
