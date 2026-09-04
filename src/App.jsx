@@ -1,36 +1,164 @@
-import { useEffect, useState } from 'react'
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { supabase } from './lib/supabase'
-import Login from './pages/Login'
-import AppShell from './pages/AppShell'
-import Public from './pages/Public'
-import './theme.css'
+import { useState, useRef } from 'react'
 
-export default function App() {
-  const [session, setSession] = useState(undefined)
+export default function AjustesPage({ ctx }) {
+  const { trades, accounts, exportCSV, importCSV, toast, userId, profile, updateProfile } = ctx
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState(null)
+  const [editingSlug, setEditingSlug] = useState(false)
+  const [newSlug, setNewSlug] = useState('')
+  const [savingSlug, setSavingSlug] = useState(false)
+  const fileRef = useRef()
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
-    return () => subscription.unsubscribe()
-  }, [])
+  const currentSlug = profile?.public_slug || ''
+  const publicURL = currentSlug
+    ? `${window.location.origin}/edgelog/#/p/${currentSlug}`
+    : '(sin link configurado)'
 
-  if (session === undefined) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0B0F17' }}>
-      <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 28, color: '#E2E8F0' }}>
-        Edge<em style={{ color: '#60A5FA', fontStyle: 'italic' }}>Log</em>
-      </div>
-    </div>
-  )
+  async function handleImportCSV(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImporting(true); setImportResult(null)
+    try {
+      const text = await file.text()
+      const result = await importCSV(text)
+      setImportResult(result)
+      toast(`✓ ${result.tradesImported} trades importados`, 'ok')
+    } catch (err) { toast('Error: ' + err.message, 'err') }
+    setImporting(false); e.target.value = ''
+  }
+
+  async function handleSaveSlug() {
+    if (!newSlug.trim()) { toast('Ingresá un nombre para el link', 'err'); return }
+    const slug = newSlug.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+    if (!slug) { toast('Solo letras, números y guiones', 'err'); return }
+    setSavingSlug(true)
+    try {
+      await updateProfile({ ...profile, public_slug: slug })
+      toast('✓ Link público actualizado', 'ok')
+      setEditingSlug(false)
+      setNewSlug('')
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+    setSavingSlug(false)
+  }
 
   return (
-    <HashRouter>
-      <Routes>
-        <Route path="/login" element={session ? <Navigate to="/dashboard" /> : <Login />} />
-        <Route path="/*" element={session ? <AppShell session={session} /> : <Navigate to="/login" />} />
-        {/* Nuevo link público por slug — el link viejo con userId ya no funciona */}
-        <Route path="/p/:slug" element={<Public />} />
-      </Routes>
-    </HashRouter>
+    <div>
+      <div className="page-header">
+        <div className="page-title">Ajus<em>tes</em></div>
+        <div className="page-sub">Importar, exportar y configurar tu link público.</div>
+      </div>
+
+      {/* Link público */}
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="card-title">Tu link público</div>
+
+        {/* Link actual */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <code style={{ flex: 1, fontSize: 12, color: 'var(--accent2)', background: 'var(--bg3)', padding: '10px 12px', borderRadius: 8, wordBreak: 'break-all', border: '1px solid var(--border)' }}>
+            {publicURL}
+          </code>
+          {currentSlug && (
+            <button className="btn btn-main btn-sm" onClick={() => { navigator.clipboard.writeText(publicURL); toast('Link copiado ✓', 'ok') }}>
+              Copiar
+            </button>
+          )}
+        </div>
+
+        {currentSlug && (
+          <div style={{ marginBottom: 14 }}>
+            <a href={publicURL} target="_blank" rel="noopener noreferrer" className="btn btn-sm" style={{ textDecoration: 'none' }}>↗ Abrir vista pública</a>
+          </div>
+        )}
+
+        {/* Cambiar slug */}
+        {!editingSlug ? (
+          <div>
+            <button className="btn btn-sm" onClick={() => { setEditingSlug(true); setNewSlug(currentSlug) }}>
+              ✏️ {currentSlug ? 'Cambiar link' : 'Configurar link'}
+            </button>
+            {currentSlug && (
+              <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10, lineHeight: 1.7 }}>
+                ⚠ Al cambiar el link, el anterior deja de funcionar inmediatamente. Cualquier persona que tenga el link viejo ya no podrá acceder.
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10, lineHeight: 1.7 }}>
+              Elegí un nombre para tu link. Solo letras, números y guiones. Ejemplo: <code style={{ color: 'var(--accent2)', fontSize: 11 }}>mi-track-record</code>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+                {window.location.origin}/edgelog/#/p/
+              </span>
+              <input
+                className="fi"
+                style={{ flex: 1 }}
+                value={newSlug}
+                onChange={e => setNewSlug(e.target.value)}
+                placeholder="MLM-TrackRecord"
+                onKeyDown={e => e.key === 'Enter' && handleSaveSlug()}
+              />
+            </div>
+            {newSlug && (
+              <div style={{ fontSize: 11, color: 'var(--accent2)', marginBottom: 10 }}>
+                Preview: {window.location.origin}/edgelog/#/p/{newSlug.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-main btn-sm" onClick={handleSaveSlug} disabled={savingSlug}>
+                {savingSlug ? 'Guardando...' : 'Guardar nuevo link'}
+              </button>
+              <button className="btn btn-sm" onClick={() => { setEditingSlug(false); setNewSlug('') }}>Cancelar</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* CSV import */}
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="card-title">Importar trades — CSV</div>
+        <div style={{ fontSize: 12.5, color: 'var(--text2)', marginBottom: 12, lineHeight: 1.7 }}>
+          Importá un CSV para actualizar o agregar trades. El sistema detecta cuentas nuevas automáticamente.
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 12, background: 'var(--bg3)', borderRadius: 8, padding: '10px 14px', border: '1px solid var(--border)' }}>
+          Formato: <code style={{ fontSize: 10.5, color: 'var(--accent2)' }}>fecha, cuenta, firma, tipo, par, temporalidad, riesgo, resultado, rr_obj, rr_real, parciales, direccion, pnl, plan, emocion, sobreoperar, nota</code>
+        </div>
+        <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleImportCSV} />
+        <button className="btn btn-main" onClick={() => fileRef.current?.click()} disabled={importing}>
+          {importing ? 'Importando...' : '↑ Seleccionar archivo CSV'}
+        </button>
+        {importResult && (
+          <div className="alert ok" style={{ marginTop: 12 }}>
+            ✓ {importResult.tradesImported} trades importados.
+            {importResult.newAccounts?.length > 0 && ` ${importResult.newAccounts.length} cuentas nuevas: ${importResult.newAccounts.map(a => a.nombre).join(', ')}.`}
+          </div>
+        )}
+      </div>
+
+      {/* CSV export */}
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="card-title">Exportar trades — CSV</div>
+        <div style={{ fontSize: 12.5, color: 'var(--text2)', marginBottom: 12 }}>Descargá todos tus {trades.length} trades en formato CSV.</div>
+        <button className="btn" onClick={() => { exportCSV(); toast('CSV descargado ✓', 'ok') }}>↓ Descargar CSV</button>
+      </div>
+
+      {/* Stats */}
+      <div className="card">
+        <div className="card-title">Estadísticas</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+          {[
+            { l: 'Trades registrados', v: trades.length },
+            { l: 'Cuentas registradas', v: accounts.length },
+            { l: 'Cuentas activas', v: accounts.filter(a => a.status === 'active').length },
+          ].map(({ l, v }) => (
+            <div key={l} className="fa-stat">
+              <div className="kl">{l}</div>
+              <div className="kv" style={{ fontSize: 24, color: 'var(--accent2)' }}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
