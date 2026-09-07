@@ -1,10 +1,18 @@
 import { useState, useRef } from 'react'
 
 export default function AjustesPage({ ctx }) {
-  const { trades, accounts, exportCSV, importCSV, toast, userId } = ctx
+  const { trades, accounts, exportCSV, importCSV, toast, userId, profile, updateProfile } = ctx
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState(null)
+  const [editingSlug, setEditingSlug] = useState(false)
+  const [newSlug, setNewSlug] = useState('')
+  const [savingSlug, setSavingSlug] = useState(false)
   const fileRef = useRef()
+
+  const currentSlug = profile?.public_slug || ''
+  const publicURL = currentSlug
+    ? `${window.location.origin}/edgelog/#/p/${currentSlug}`
+    : '(sin link configurado)'
 
   async function handleImportCSV(e) {
     const file = e.target.files?.[0]
@@ -19,7 +27,19 @@ export default function AjustesPage({ ctx }) {
     setImporting(false); e.target.value = ''
   }
 
-  const publicURL = `${window.location.origin}/edgelog/#/public/${userId}`
+  async function handleSaveSlug() {
+    if (!newSlug.trim()) { toast('Ingresá un nombre para el link', 'err'); return }
+    const slug = newSlug.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+    if (!slug) { toast('Solo letras, números y guiones', 'err'); return }
+    setSavingSlug(true)
+    try {
+      await updateProfile({ ...profile, public_slug: slug })
+      toast('✓ Link público actualizado', 'ok')
+      setEditingSlug(false)
+      setNewSlug('')
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+    setSavingSlug(false)
+  }
 
   return (
     <div>
@@ -28,18 +48,74 @@ export default function AjustesPage({ ctx }) {
         <div className="page-sub">Importar, exportar y configurar tu link público.</div>
       </div>
 
+      {/* Link público */}
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="card-title">Tu link público</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-          <code style={{ flex: 1, fontSize: 12, color: 'var(--accent2)', background: 'var(--bg3)', padding: '10px 12px', borderRadius: 8, wordBreak: 'break-all', border: '1px solid var(--border)' }}>{publicURL}</code>
-          <button className="btn btn-main btn-sm" onClick={() => { navigator.clipboard.writeText(publicURL); toast('Link copiado ✓', 'ok') }}>Copiar</button>
+
+        {/* Link actual */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <code style={{ flex: 1, fontSize: 12, color: 'var(--accent2)', background: 'var(--bg3)', padding: '10px 12px', borderRadius: 8, wordBreak: 'break-all', border: '1px solid var(--border)' }}>
+            {publicURL}
+          </code>
+          {currentSlug && (
+            <button className="btn btn-main btn-sm" onClick={() => { navigator.clipboard.writeText(publicURL); toast('Link copiado ✓', 'ok') }}>
+              Copiar
+            </button>
+          )}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.7 }}>Cualquiera con este link puede ver tu track record. <strong style={{ color: 'var(--text2)' }}>Solo lectura</strong> — nadie puede editar datos.</div>
-        <div style={{ marginTop: 10 }}>
-          <a href={publicURL} target="_blank" rel="noopener noreferrer" className="btn btn-sm" style={{ textDecoration: 'none' }}>↗ Abrir vista pública</a>
-        </div>
+
+        {currentSlug && (
+          <div style={{ marginBottom: 14 }}>
+            <a href={publicURL} target="_blank" rel="noopener noreferrer" className="btn btn-sm" style={{ textDecoration: 'none' }}>↗ Abrir vista pública</a>
+          </div>
+        )}
+
+        {/* Cambiar slug */}
+        {!editingSlug ? (
+          <div>
+            <button className="btn btn-sm" onClick={() => { setEditingSlug(true); setNewSlug(currentSlug) }}>
+              ✏️ {currentSlug ? 'Cambiar link' : 'Configurar link'}
+            </button>
+            {currentSlug && (
+              <div style={{ fontSize: 11.5, color: 'var(--text3)', marginTop: 10, lineHeight: 1.7 }}>
+                ⚠ Al cambiar el link, el anterior deja de funcionar inmediatamente. Cualquier persona que tenga el link viejo ya no podrá acceder.
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10, lineHeight: 1.7 }}>
+              Elegí un nombre para tu link. Solo letras, números y guiones. Ejemplo: <code style={{ color: 'var(--accent2)', fontSize: 11 }}>mi-track-record</code>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 12, color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+                {window.location.origin}/edgelog/#/p/
+              </span>
+              <input
+                className="fi"
+                style={{ flex: 1 }}
+                value={newSlug}
+                onChange={e => setNewSlug(e.target.value)}
+                placeholder="MLM-TrackRecord"
+                onKeyDown={e => e.key === 'Enter' && handleSaveSlug()}
+              />
+            </div>
+            {newSlug && (
+              <div style={{ fontSize: 11, color: 'var(--accent2)', marginBottom: 10 }}>
+                Preview: {window.location.origin}/edgelog/#/p/{newSlug.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-main btn-sm" onClick={handleSaveSlug} disabled={savingSlug}>
+                {savingSlug ? 'Guardando...' : 'Guardar nuevo link'}
+              </button>
+              <button className="btn btn-sm" onClick={() => { setEditingSlug(false); setNewSlug('') }}>Cancelar</button>
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* CSV import */}
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="card-title">Importar trades — CSV</div>
         <div style={{ fontSize: 12.5, color: 'var(--text2)', marginBottom: 12, lineHeight: 1.7 }}>
@@ -60,12 +136,14 @@ export default function AjustesPage({ ctx }) {
         )}
       </div>
 
+      {/* CSV export */}
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="card-title">Exportar trades — CSV</div>
         <div style={{ fontSize: 12.5, color: 'var(--text2)', marginBottom: 12 }}>Descargá todos tus {trades.length} trades en formato CSV.</div>
         <button className="btn" onClick={() => { exportCSV(); toast('CSV descargado ✓', 'ok') }}>↓ Descargar CSV</button>
       </div>
 
+      {/* Stats */}
       <div className="card">
         <div className="card-title">Estadísticas</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
