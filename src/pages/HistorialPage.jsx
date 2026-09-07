@@ -13,10 +13,11 @@ function Badge({ children, color = 'slate' }) {
 }
 
 export default function HistorialPage({ ctx }) {
-  const { trades, removeTrade, editTrade, toast } = ctx
-  const [filters, setFilters] = useState({ cuenta: '', resultado: '', plan: '', quality: '' })
+  const { trades, accounts, removeTrade, editTrade, toast } = ctx
+  const [filters, setFilters] = useState({ cuenta: '', resultado: '', plan: '', quality: '', tipo: '' })
   const [search, setSearch] = useState('')
 
+  const fundedIds = new Set(accounts.filter(a => a.type === 'funded').map(a => String(a.id)))
   const cuentas = [...new Set(trades.map(t => t.c_nombre).filter(Boolean))].sort()
 
   const sorted = [...trades].sort((a, b) => {
@@ -26,6 +27,8 @@ export default function HistorialPage({ ctx }) {
   })
 
   const filtered = sorted.filter(t => {
+    if (filters.tipo === 'funded' && !fundedIds.has(String(t.cid))) return false
+    if (filters.tipo === 'challenge' && fundedIds.has(String(t.cid))) return false
     if (filters.cuenta && t.c_nombre !== filters.cuenta) return false
     if (filters.resultado && t.resultado !== filters.resultado) return false
     if (filters.plan && t.plan !== filters.plan) return false
@@ -35,7 +38,6 @@ export default function HistorialPage({ ctx }) {
     return true
   })
 
-  // P&L acumulado de los trades filtrados
   const filteredMetrics = calcMetrics(filtered.filter(t => ['Win','Loss','Breakeven'].includes(t.resultado)))
   const hasFilters = Object.values(filters).some(Boolean) || search
 
@@ -65,10 +67,25 @@ export default function HistorialPage({ ctx }) {
         </div>
       </div>
 
-      {/* Filtros */}
+      {/* Filtro rápido por tipo */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+        {[
+          { v: '', label: 'Todas' },
+          { v: 'funded', label: '◆ Solo fondeadas' },
+          { v: 'challenge', label: '⚡ Solo challenges' },
+        ].map(opt => (
+          <button key={opt.v}
+            className={`btn btn-sm ${filters.tipo === opt.v ? 'btn-main' : ''}`}
+            onClick={() => setFilters(p => ({ ...p, tipo: opt.v, cuenta: '' }))}>
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Filtros detallados */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
         <input style={{ ...sel, minWidth: 180 }} placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} />
-        <select style={sel} value={filters.cuenta} onChange={e => setFilters(p => ({ ...p, cuenta: e.target.value }))}>
+        <select style={sel} value={filters.cuenta} onChange={e => setFilters(p => ({ ...p, cuenta: e.target.value, tipo: '' }))}>
           <option value="">Todas las cuentas</option>
           {cuentas.map(c => <option key={c}>{c}</option>)}
         </select>
@@ -86,30 +103,18 @@ export default function HistorialPage({ ctx }) {
           <option value="no">⚠ Fuera de plan</option>
         </select>
         {hasFilters && (
-          <button className="btn btn-sm" onClick={() => { setFilters({ cuenta: '', resultado: '', plan: '', quality: '' }); setSearch('') }}>✕ Limpiar</button>
+          <button className="btn btn-sm" onClick={() => { setFilters({ cuenta: '', resultado: '', plan: '', quality: '', tipo: '' }); setSearch('') }}>✕ Limpiar</button>
         )}
       </div>
 
-      {/* Resumen de filtro */}
+      {/* Resumen filtrado */}
       {hasFilters && filtered.length > 0 && (
         <div style={{ display: 'flex', gap: 12, marginBottom: 14, padding: '10px 14px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: 'var(--text2)' }}>
-            {filtered.length} trades filtrados
-          </span>
-          <span style={{ fontSize: 12, color: filteredMetrics.wr >= 50 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
-            WR: {filteredMetrics.wr !== null ? filteredMetrics.wr + '%' : '—'}
-          </span>
-          <span style={{ fontSize: 12, color: filteredMetrics.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
-            P&L: {filteredMetrics.pnl >= 0 ? '+' : ''}{filteredMetrics.pnl.toFixed(2)}%
-          </span>
-          <span style={{ fontSize: 12, color: 'var(--text3)' }}>
-            {filteredMetrics.w}W · {filteredMetrics.l}L
-          </span>
-          {filteredMetrics.avgRR && (
-            <span style={{ fontSize: 12, color: 'var(--text2)' }}>
-              R:R: 1:{filteredMetrics.avgRR.toFixed(1)}
-            </span>
-          )}
+          <span style={{ fontSize: 12, color: 'var(--text2)' }}>{filtered.length} trades</span>
+          <span style={{ fontSize: 12, color: filteredMetrics.wr >= 50 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>WR: {filteredMetrics.wr !== null ? filteredMetrics.wr + '%' : '—'}</span>
+          <span style={{ fontSize: 12, color: filteredMetrics.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>P&L: {filteredMetrics.pnl >= 0 ? '+' : ''}{filteredMetrics.pnl.toFixed(2)}%</span>
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>{filteredMetrics.w}W · {filteredMetrics.l}L</span>
+          {filteredMetrics.avgRR && <span style={{ fontSize: 12, color: 'var(--text2)' }}>R:R: 1:{filteredMetrics.avgRR.toFixed(1)}</span>}
         </div>
       )}
 
@@ -118,16 +123,18 @@ export default function HistorialPage({ ctx }) {
         {filtered.length === 0 && <div className="empty"><div className="empty-icon">▸</div><p>Sin entradas que coincidan.</p></div>}
         {filtered.map(t => {
           const q = isQuality(t)
+          const isFunded = fundedIds.has(String(t.cid))
           const dotColor = t.resultado === 'Win' ? 'var(--green)' : t.resultado === 'Loss' ? 'var(--red)' : 'var(--amber)'
           const resBadge = t.resultado === 'Win' ? 'green' : t.resultado === 'Loss' ? 'red' : 'amber'
           const planBadge = t.plan === '100% exacto' ? 'green' : t.plan === 'Parcialmente' ? 'amber' : 'red'
           return (
-            <div key={t.id} className="entry">
+            <div key={t.id} className="entry" style={{ borderLeft: isFunded ? '2px solid var(--gold)' : undefined }}>
               <div className="entry-dot" style={{ background: dotColor }} />
               <div className="entry-body">
                 <div className="entry-top">
                   <span className="entry-date">{t.fecha}</span>
                   <Badge color="forest">{t.c_nombre}</Badge>
+                  {isFunded && <Badge color="gold">◆</Badge>}
                   <Badge color={resBadge}>{t.resultado}</Badge>
                   <Badge color={planBadge}>{t.plan}</Badge>
                   {t.r_pnl !== 0 && <Badge color={t.r_pnl > 0 ? 'green' : 'red'}>{t.r_pnl > 0 ? '+' : ''}{t.r_pnl?.toFixed(2)}%</Badge>}
