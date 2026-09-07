@@ -50,6 +50,12 @@ export default function Dashboard({ ctx }) {
   const active = accounts.filter(a => !['completed', 'closed', 'perdida'].includes(a.status))
   const equityData = buildEquityCurve(trades)
 
+  // P&L del día actual
+  const today = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const todayTrades = trades.filter(t => t.fecha === today)
+  const todayMetrics = calcMetrics(todayTrades)
+  const todayPnl = todayMetrics.pnl
+
   const now = new Date()
   const dateStr = now.toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     .replace(/^\w/, c => c.toUpperCase())
@@ -60,7 +66,6 @@ export default function Dashboard({ ctx }) {
     localStorage.setItem('el_cl', JSON.stringify(next))
   }
 
-  // P&L por cuenta — fondeadas muestran ciclo actual, challenges muestran histórico
   function accPnl(a) {
     const te = trades.filter(e => String(e.cid) === String(a.id))
     if (a.type === 'funded') {
@@ -85,7 +90,6 @@ export default function Dashboard({ ctx }) {
     return { target, pct: Math.min(Math.round(cur / target * 100), 100) }
   }
 
-  // Últimas 5 entradas ordenadas por fecha más reciente
   const lastTrades = [...trades]
     .sort((a, b) => {
       const da = a.fecha?.split('/').reverse().join('-') || ''
@@ -96,6 +100,7 @@ export default function Dashboard({ ctx }) {
 
   return (
     <div>
+      {/* Header */}
       <div className="page-header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
         <div>
           <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: 'var(--text)', lineHeight: 1.1 }}>
@@ -103,17 +108,31 @@ export default function Dashboard({ ctx }) {
           </div>
           <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>{dateStr}</div>
         </div>
-        <button className={`btn btn-sm ${sessionOpen ? 'btn-main' : ''}`} onClick={() => setSessionOpen(!sessionOpen)}>
-          {sessionOpen ? '● Sesión abierta' : '○ Sesión cerrada'}
-        </button>
+        <div style={{ display: 'flex', align: 'center', gap: 10 }}>
+          {/* P&L del día */}
+          {todayTrades.length > 0 && (
+            <div style={{ textAlign: 'right', padding: '8px 14px', background: 'var(--bg2)', border: `1px solid ${todayPnl >= 0 ? 'var(--green-border)' : 'var(--red-border)'}`, borderRadius: 10 }}>
+              <div style={{ fontSize: 9.5, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 2 }}>Hoy</div>
+              <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 18, color: todayPnl >= 0 ? 'var(--green)' : 'var(--red)', lineHeight: 1 }}>
+                {todayPnl >= 0 ? '+' : ''}{todayPnl.toFixed(2)}%
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{todayMetrics.w}W · {todayMetrics.l}L</div>
+            </div>
+          )}
+          <button className={`btn btn-sm ${sessionOpen ? 'btn-main' : ''}`} onClick={() => setSessionOpen(!sessionOpen)}>
+            {sessionOpen ? '● Sesión abierta' : '○ Sesión cerrada'}
+          </button>
+        </div>
       </div>
 
+      {/* Alertas */}
       {alerts.length > 0 && (
         <div style={{ marginBottom: 14 }}>
           {alerts.map((a, i) => <div key={i} className={`alert ${a.level}`}>{a.msg}</div>)}
         </div>
       )}
 
+      {/* KPIs principales */}
       <div className="kpi-grid kpi-grid-4">
         <KPICard dark label="Trades totales" value={g.tr} sub={`${trades.length} entradas en diario`} />
         <KPICard label="Win rate" value={g.wr !== null ? `${g.wr}%` : '—'} sub={`${g.w}W · ${g.l}L`} pos={g.wr >= 50} neg={g.wr !== null && g.wr < 50} />
@@ -127,28 +146,37 @@ export default function Dashboard({ ctx }) {
         <KPICard label="Racha actual" value={streaks.cur > 0 ? `${streaks.cur} ${streaks.type === 'Win' ? 'wins' : 'losses'}` : '—'} sub={`Máx wins: ${streaks.maxW} · Máx losses: ${streaks.maxL}`} pos={streaks.type === 'Win' && streaks.cur > 0} neg={streaks.type === 'Loss' && streaks.cur > 0} />
       </div>
 
+      {/* Cuentas + Checklist */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
         <div className="card">
           <div className="card-title">Cuentas activas</div>
-          {active.length === 0 ? <div className="empty"><div className="empty-icon">⚡</div><p>Sin cuentas activas.</p></div>
-            : active.slice(0, 5).map(a => {
+          {active.length === 0
+            ? <div className="empty"><div className="empty-icon">⚡</div><p>Sin cuentas activas.</p></div>
+            : active.slice(0, 6).map(a => {
               const pnl = accPnl(a)
               const obj = a.type === 'funded' ? (a.dd || 5) : (a.objetivo || 8)
               const pct = Math.min(Math.max(pnl / obj * 100, 0), 100)
+              const tradesLeft = a.type !== 'funded' && obj > 0
+                ? Math.max(0, Math.ceil((obj - pnl) / (parseFloat(a.riesgo || '2') * 2)))
+                : null
               return (
                 <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
                   <div style={{ width: 3, height: 30, background: a.type === 'funded' ? 'var(--gold)' : 'var(--accent)', borderRadius: 3, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{a.nombre}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{a.nombre}</div>
+                      {tradesLeft !== null && pnl < obj && (
+                        <div style={{ fontSize: 10, color: 'var(--text3)' }}>~{tradesLeft} trades</div>
+                      )}
+                    </div>
                     <div style={{ fontSize: 10, color: 'var(--text3)' }}>
-                      {a.firma} · {a.type === 'funded' ? 'Fondeada' : a.fase || 'Challenge'}
-                      {a.type === 'funded' && <span style={{ color: 'var(--text3)', fontSize: 9.5 }}> · ciclo actual</span>}
+                      {a.type === 'funded' ? 'Fondeada · ciclo actual' : `${a.fase} · obj ${a.objetivo}%`}
                     </div>
                     <div className="pb" style={{ marginTop: 4 }}>
                       <div className="pf" style={{ width: `${Math.abs(pct)}%`, background: pnl >= 0 ? 'var(--green)' : 'var(--red)' }} />
                     </div>
                   </div>
-                  <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 16, fontWeight: 600, color: pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                  <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 16, fontWeight: 600, color: pnl >= 0 ? 'var(--green)' : 'var(--red)', flexShrink: 0 }}>
                     {pnl >= 0 ? '+' : ''}{pnl.toFixed(1)}%
                   </div>
                 </div>
@@ -167,37 +195,42 @@ export default function Dashboard({ ctx }) {
               <span className={`cl-text ${checklist.includes(i) ? 'done' : ''}`}>{item}</span>
             </div>
           ))}
-          <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 8, textAlign: 'center' }}>{checklist.length}/{CHECKLIST_ITEMS.length} completados</div>
+          <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 8, textAlign: 'center' }}>
+            {checklist.length}/{CHECKLIST_ITEMS.length} completados
+          </div>
         </div>
       </div>
 
       {/* Equity curve */}
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="card-title">Equity curve — P&L acumulado</div>
-        {equityData.length <= 1 ? <div className="empty"><div className="empty-icon">∿</div><p>Sin datos aún.</p></div> : (
-          <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={equityData}>
-              <defs>
-                <linearGradient id="pnlGradDash" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)" />
-              <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-              <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + '%'} />
-              <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'P&L acum.']} labelStyle={{ color: '#60A5FA', fontWeight: 600 }} />
-              <Area type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2} fill="url(#pnlGradDash)" dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#111827', strokeWidth: 2 }} />
-            </AreaChart>
-          </ResponsiveContainer>
-        )}
+        {equityData.length <= 1
+          ? <div className="empty"><div className="empty-icon">∿</div><p>Sin datos aún.</p></div>
+          : (
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={equityData}>
+                <defs>
+                  <linearGradient id="pnlGradDash" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)" />
+                <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + '%'} />
+                <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'P&L acum.']} labelStyle={{ color: '#60A5FA', fontWeight: 600 }} />
+                <Area type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2} fill="url(#pnlGradDash)" dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#111827', strokeWidth: 2 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
       </div>
 
-      {/* Últimas 5 entradas ordenadas por fecha */}
+      {/* Últimas entradas */}
       <div className="card">
         <div className="card-title">Últimas entradas</div>
-        {lastTrades.length === 0 ? <div className="empty"><p>Sin entradas.</p></div> :
-          lastTrades.map(t => {
+        {lastTrades.length === 0
+          ? <div className="empty"><p>Sin entradas.</p></div>
+          : lastTrades.map(t => {
             const q = isQuality(t)
             const dotColor = t.resultado === 'Win' ? 'var(--green)' : t.resultado === 'Loss' ? 'var(--red)' : 'var(--amber)'
             return (
@@ -208,7 +241,11 @@ export default function Dashboard({ ctx }) {
                   <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{t.par} · {t.risk} · R:{t.rr_real || t.rr || '—'} · {t.plan}</div>
                 </div>
                 <span style={{ fontSize: 11, color: q ? 'var(--green)' : 'var(--red)' }}>{q ? '✦' : '⚠'}</span>
-                {t.r_pnl !== 0 && <span style={{ fontSize: 13, fontWeight: 600, color: t.r_pnl > 0 ? 'var(--green)' : 'var(--red)' }}>{t.r_pnl > 0 ? '+' : ''}{t.r_pnl?.toFixed(2)}%</span>}
+                {t.r_pnl !== 0 && (
+                  <span style={{ fontSize: 13, fontWeight: 600, color: t.r_pnl > 0 ? 'var(--green)' : 'var(--red)' }}>
+                    {t.r_pnl > 0 ? '+' : ''}{t.r_pnl?.toFixed(2)}%
+                  </span>
+                )}
               </div>
             )
           })}
