@@ -12,6 +12,7 @@ import FondeadasPage from './FondeadasPage'
 import TrackRecordPage from './TrackRecordPage'
 import ReglasPage from './ReglasPage'
 import AjustesPage from './AjustesPage'
+import RendimientoPage from './RendimientoPage'
 
 const NAV = [
   { group: null, items: [
@@ -25,7 +26,8 @@ const NAV = [
   ]},
   { group: 'Análisis', items: [
     { id: 'historial', icon: '▸', label: 'Historial' },
-    { id: 'periodos', icon: '◫', label: 'Períodos' },
+    { id: 'periodos', icon: '◫', label: 'Analytics' },
+    { id: 'rendimiento', icon: '◉', label: 'Rendimiento' },
   ]},
   { group: 'Mostrar', items: [
     { id: 'track', icon: '▣', label: 'Track Record' },
@@ -110,16 +112,17 @@ export default function AppShell({ session }) {
             }}>↑ Importar datos</button>
           </div>
         )}
-        {active === 'dashboard'  && <Dashboard ctx={ctx} />}
-        {active === 'diario'     && <DiarioPage ctx={ctx} />}
-        {active === 'cuentas'    && <CuentasPage ctx={ctx} />}
-        {active === 'fondeadas'  && <FondeadasPage ctx={ctx} />}
-        {active === 'calc'       && <CalcPage ctx={ctx} />}
-        {active === 'historial'  && <HistorialPage ctx={ctx} />}
-        {active === 'periodos'   && <PeriodosPage ctx={ctx} />}
-        {active === 'track'      && <TrackRecordPage ctx={ctx} />}
-        {active === 'reglas'     && <ReglasPage ctx={ctx} />}
-        {active === 'ajustes'    && <AjustesPage ctx={ctx} />}
+        {active === 'dashboard'   && <Dashboard ctx={ctx} />}
+        {active === 'diario'      && <DiarioPage ctx={ctx} />}
+        {active === 'cuentas'     && <CuentasPage ctx={ctx} />}
+        {active === 'fondeadas'   && <FondeadasPage ctx={ctx} />}
+        {active === 'calc'        && <CalcPage ctx={ctx} />}
+        {active === 'historial'   && <HistorialPage ctx={ctx} />}
+        {active === 'periodos'    && <PeriodosPage ctx={ctx} />}
+        {active === 'rendimiento' && <RendimientoPage ctx={ctx} />}
+        {active === 'track'       && <TrackRecordPage ctx={ctx} />}
+        {active === 'reglas'      && <ReglasPage ctx={ctx} />}
+        {active === 'ajustes'     && <AjustesPage ctx={ctx} />}
       </main>
 
       <ToastContainer />
