@@ -40,6 +40,7 @@ export default function Dashboard({ ctx }) {
     try { return JSON.parse(localStorage.getItem('el_cl') || '[]') } catch { return [] }
   })
   const [sessionOpen, setSessionOpen] = useState(false)
+  const [dismissed, setDismissed] = useState([])
 
   const g = calcMetrics(trades)
   const qTrades = trades.filter(isQuality)
@@ -49,8 +50,8 @@ export default function Dashboard({ ctx }) {
   const alerts = calcDeteriorationAlerts(trades, accounts)
   const active = accounts.filter(a => !['completed', 'closed', 'perdida'].includes(a.status))
   const equityData = buildEquityCurve(trades)
+  const visibleAlerts = alerts.filter((_, i) => !dismissed.includes(i))
 
-  // P&L del día actual
   const today = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
   const todayTrades = trades.filter(t => t.fecha === today)
   const todayMetrics = calcMetrics(todayTrades)
@@ -108,8 +109,7 @@ export default function Dashboard({ ctx }) {
           </div>
           <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>{dateStr}</div>
         </div>
-        <div style={{ display: 'flex', align: 'center', gap: 10 }}>
-          {/* P&L del día */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {todayTrades.length > 0 && (
             <div style={{ textAlign: 'right', padding: '8px 14px', background: 'var(--bg2)', border: `1px solid ${todayPnl >= 0 ? 'var(--green-border)' : 'var(--red-border)'}`, borderRadius: 10 }}>
               <div style={{ fontSize: 9.5, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 2 }}>Hoy</div>
@@ -125,10 +125,16 @@ export default function Dashboard({ ctx }) {
         </div>
       </div>
 
-      {/* Alertas */}
-      {alerts.length > 0 && (
+      {/* Alertas con botón de cerrar */}
+      {visibleAlerts.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          {alerts.map((a, i) => <div key={i} className={`alert ${a.level}`}>{a.msg}</div>)}
+          {alerts.map((a, i) => dismissed.includes(i) ? null : (
+            <div key={i} className={`alert ${a.level}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>{a.msg}</span>
+              <button onClick={() => setDismissed(p => [...p, i])}
+                style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 14, opacity: .7, marginLeft: 12, flexShrink: 0 }}>✕</button>
+            </div>
+          ))}
         </div>
       )}
 
