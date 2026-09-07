@@ -10,46 +10,6 @@ const STATUS = {
 
 const EMPTY = { type: 'challenge', nombre: '', firma: 'Alpha Capital Group', fase: 'Fase 1', capital: 10000, objetivo: 8, dd: 8, split: '80/20', nota: '', status: 'active' }
 
-function DDTooltip({ maxDD, ddPct, ddLim, ddCol, pnlCur }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 9.5, color: 'var(--text3)', marginBottom: 4 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          Caída desde pico: <strong style={{ color: ddCol }}>{maxDD.toFixed(2)}%</strong>
-          <span
-            onClick={() => setOpen(!open)}
-            style={{ cursor: 'pointer', fontSize: 9.5, color: 'var(--text3)', background: 'var(--bg4)', border: '1px solid var(--border2)', borderRadius: '50%', width: 15, height: 15, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, userSelect: 'none', flexShrink: 0 }}>
-            ?
-          </span>
-        </span>
-        <span style={{ color: ddCol, fontWeight: 600 }}>{ddPct}% del límite ({ddLim}%)</span>
-      </div>
-
-      {open && (
-        <div style={{ background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 10, padding: '12px 14px', fontSize: 11.5, color: 'var(--text2)', lineHeight: 1.7, marginBottom: 8 }}>
-          <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>¿Qué es la caída desde pico?</div>
-          <p>Es la mayor distancia entre el <strong>mejor momento</strong> de la cuenta y el <strong>peor momento posterior</strong>. No importa si estás en positivo — si llegaste a +7% y ahora estás en +1%, tu caída desde pico es 6%.</p>
-          <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--bg2)', borderRadius: 8, border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 11, color: 'var(--text3)' }}>Fórmula: <code style={{ color: 'var(--accent2)' }}>Pico histórico − Valor actual</code></div>
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
-              Límite de la firma: <strong style={{ color: 'var(--text)' }}>{ddLim}%</strong> · Consumido: <strong style={{ color: ddCol }}>{ddPct}%</strong>
-            </div>
-          </div>
-          <div style={{ marginTop: 8, fontSize: 11, color: ddPct > 80 ? 'var(--red)' : ddPct > 55 ? 'var(--amber)' : 'var(--green)' }}>
-            {ddPct > 80 ? '⚠ Zona de peligro — gestioná el riesgo con cuidado.' : ddPct > 55 ? '△ Zona de precaución — atención al riesgo.' : '✓ Cuenta bien gestionada.'}
-          </div>
-          <button onClick={() => setOpen(false)} style={{ marginTop: 8, fontSize: 10.5, color: 'var(--text3)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Cerrar ✕</button>
-        </div>
-      )}
-
-      <div className="dd-bar">
-        <div className="dd-fill" style={{ width: `${ddPct}%`, background: ddCol }} />
-      </div>
-    </div>
-  )
-}
-
 export default function CuentasPage({ ctx }) {
   const { accounts, trades, withdrawals, addAccount, removeAccount, setAccStatus, toast } = ctx
   const [showForm, setShowForm] = useState(false)
@@ -57,6 +17,7 @@ export default function CuentasPage({ ctx }) {
   const [saving, setSaving] = useState(false)
   const [confirmId, setConfirmId] = useState(null)
   const [confirmAction, setConfirmAction] = useState(null)
+  const [tab, setTab] = useState('activas')
 
   async function handleSave() {
     if (!form.nombre.trim()) { toast('Ingresá el número de cuenta', 'err'); return }
@@ -78,8 +39,12 @@ export default function CuentasPage({ ctx }) {
     setConfirmId(null)
   }
 
-  const challenges = accounts.filter(a => a.type === 'challenge')
-  const funded = accounts.filter(a => a.type === 'funded')
+  const activas = accounts.filter(a => a.status === 'active')
+  const inactivas = accounts.filter(a => ['completed', 'perdida', 'closed'].includes(a.status))
+  const showing = tab === 'activas' ? activas : inactivas
+
+  const challenges = showing.filter(a => a.type === 'challenge')
+  const funded = showing.filter(a => a.type === 'funded')
 
   function AccCard({ a }) {
     const te = trades.filter(e => String(e.cid) === String(a.id))
@@ -90,17 +55,13 @@ export default function CuentasPage({ ctx }) {
     const cap = a.capital || 0
     const obj = isF ? (a.dd || 5) : (a.objetivo || 8)
     const barPct = Math.min(Math.max(pnlCur / obj * 100, 0), 100)
-    const maxDD = calcMaxDD(te)
-    const ddLim = a.dd || 5
-    const ddPct = ddLim > 0 ? Math.min(Math.round(maxDD / ddLim * 100), 100) : 0
-    const ddCol = ddPct > 80 ? 'var(--red)' : ddPct > 55 ? 'var(--amber)' : 'var(--green)'
     const st = STATUS[a.status] || STATUS.active
     const isDone = ['completed', 'closed', 'perdida'].includes(a.status)
     const parent = a.parent ? accounts.find(x => x.id == a.parent) : null
     const child = a.child ? accounts.find(x => x.id == a.child) : null
 
     return (
-      <div style={{ background: 'var(--bg2)', border: `1px solid ${a.status === 'perdida' ? 'var(--red-border)' : 'var(--border)'}`, borderRadius: 'var(--radius-lg)', padding: '16px 18px', marginBottom: 10, opacity: isDone ? .7 : 1 }}>
+      <div style={{ background: 'var(--bg2)', border: `1px solid ${a.status === 'perdida' ? 'var(--red-border)' : 'var(--border)'}`, borderRadius: 'var(--radius-lg)', padding: '16px 18px', marginBottom: 10, opacity: isDone ? .75 : 1 }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -128,18 +89,13 @@ export default function CuentasPage({ ctx }) {
         </div>
 
         {/* Barra de progreso */}
-        <div style={{ marginBottom: 10 }}>
+        <div style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, color: 'var(--text3)', marginBottom: 3 }}>
             <span>Progreso al objetivo ({obj}%)</span>
             <span style={{ fontWeight: 600 }}>{barPct.toFixed(0)}%</span>
           </div>
           <div className="pb"><div className="pf" style={{ width: `${barPct}%`, background: pnlCur >= 0 ? 'var(--green)' : 'var(--red)' }} /></div>
         </div>
-
-        {/* DD con tooltip explicativo */}
-        {te.length > 0 && (
-          <DDTooltip maxDD={maxDD} ddPct={ddPct} ddLim={ddLim} ddCol={ddCol} pnlCur={pnlCur} />
-        )}
 
         {/* Acciones */}
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
@@ -174,11 +130,22 @@ export default function CuentasPage({ ctx }) {
       <div className="page-header" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
         <div>
           <div className="page-title">Mis <em>cuentas</em></div>
-          <div className="page-sub">{accounts.filter(a => a.status === 'active').length} activas · {accounts.filter(a => a.status === 'completed').length} completadas · {accounts.filter(a => a.status === 'perdida').length} perdidas</div>
+          <div className="page-sub">{activas.length} activas · {inactivas.length} inactivas</div>
         </div>
         <button className="btn btn-main btn-sm" onClick={() => setShowForm(!showForm)}>{showForm ? '✕ Cancelar' : '+ Nueva cuenta'}</button>
       </div>
 
+      {/* Tabs activas / inactivas */}
+      <div className="tab-bar" style={{ marginBottom: 16 }}>
+        <button className={`tab-btn ${tab === 'activas' ? 'active' : ''}`} onClick={() => setTab('activas')}>
+          ● Activas ({activas.length})
+        </button>
+        <button className={`tab-btn ${tab === 'inactivas' ? 'active' : ''}`} onClick={() => setTab('inactivas')}>
+          ○ Historial ({inactivas.length})
+        </button>
+      </div>
+
+      {/* Formulario nueva cuenta */}
       {showForm && (
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="card-title">Nueva cuenta</div>
@@ -206,9 +173,18 @@ export default function CuentasPage({ ctx }) {
         </div>
       )}
 
-      {funded.length > 0 && <><div className="quality-sep">◆ Fondeadas</div>{funded.map(a => <AccCard key={a.id} a={a} />)}</>}
-      {challenges.length > 0 && <><div className="quality-sep">⚡ Challenges</div>{challenges.map(a => <AccCard key={a.id} a={a} />)}</>}
-      {accounts.length === 0 && <div className="empty"><div className="empty-icon">⚡</div><p>Sin cuentas. Agregá una para empezar.</p></div>}
+      {/* Lista de cuentas */}
+      {showing.length === 0 ? (
+        <div className="empty">
+          <div className="empty-icon">{tab === 'activas' ? '⚡' : '○'}</div>
+          <p>{tab === 'activas' ? 'Sin cuentas activas.' : 'Sin cuentas en el historial.'}</p>
+        </div>
+      ) : (
+        <>
+          {funded.length > 0 && <><div className="quality-sep">◆ Fondeadas</div>{funded.map(a => <AccCard key={a.id} a={a} />)}</>}
+          {challenges.length > 0 && <><div className="quality-sep">⚡ Challenges</div>{challenges.map(a => <AccCard key={a.id} a={a} />)}</>}
+        </>
+      )}
     </div>
   )
 }
