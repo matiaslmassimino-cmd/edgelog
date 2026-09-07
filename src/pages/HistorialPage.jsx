@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { isQuality } from '../lib/metrics'
+import { isQuality, calcMetrics } from '../lib/metrics'
 
 const DIRS = ['—', 'Compra', 'Venta']
 
@@ -19,7 +19,6 @@ export default function HistorialPage({ ctx }) {
 
   const cuentas = [...new Set(trades.map(t => t.c_nombre).filter(Boolean))].sort()
 
-  // Ordenar de más reciente a más antiguo
   const sorted = [...trades].sort((a, b) => {
     const da = a.fecha?.split('/').reverse().join('-') || ''
     const db = b.fecha?.split('/').reverse().join('-') || ''
@@ -35,6 +34,10 @@ export default function HistorialPage({ ctx }) {
     if (search && !`${t.fecha} ${t.c_nombre} ${t.resultado} ${t.plan} ${t.nota}`.toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
+
+  // P&L acumulado de los trades filtrados
+  const filteredMetrics = calcMetrics(filtered.filter(t => ['Win','Loss','Breakeven'].includes(t.resultado)))
+  const hasFilters = Object.values(filters).some(Boolean) || search
 
   async function handleToggleDir(id, cur) {
     const dir = nextDir(cur)
@@ -62,7 +65,8 @@ export default function HistorialPage({ ctx }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+      {/* Filtros */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
         <input style={{ ...sel, minWidth: 180 }} placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} />
         <select style={sel} value={filters.cuenta} onChange={e => setFilters(p => ({ ...p, cuenta: e.target.value }))}>
           <option value="">Todas las cuentas</option>
@@ -81,11 +85,35 @@ export default function HistorialPage({ ctx }) {
           <option value="yes">✦ Disciplinados</option>
           <option value="no">⚠ Fuera de plan</option>
         </select>
-        {(Object.values(filters).some(Boolean) || search) && (
+        {hasFilters && (
           <button className="btn btn-sm" onClick={() => { setFilters({ cuenta: '', resultado: '', plan: '', quality: '' }); setSearch('') }}>✕ Limpiar</button>
         )}
       </div>
 
+      {/* Resumen de filtro */}
+      {hasFilters && filtered.length > 0 && (
+        <div style={{ display: 'flex', gap: 12, marginBottom: 14, padding: '10px 14px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: 'var(--text2)' }}>
+            {filtered.length} trades filtrados
+          </span>
+          <span style={{ fontSize: 12, color: filteredMetrics.wr >= 50 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
+            WR: {filteredMetrics.wr !== null ? filteredMetrics.wr + '%' : '—'}
+          </span>
+          <span style={{ fontSize: 12, color: filteredMetrics.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
+            P&L: {filteredMetrics.pnl >= 0 ? '+' : ''}{filteredMetrics.pnl.toFixed(2)}%
+          </span>
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>
+            {filteredMetrics.w}W · {filteredMetrics.l}L
+          </span>
+          {filteredMetrics.avgRR && (
+            <span style={{ fontSize: 12, color: 'var(--text2)' }}>
+              R:R: 1:{filteredMetrics.avgRR.toFixed(1)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Lista */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {filtered.length === 0 && <div className="empty"><div className="empty-icon">▸</div><p>Sin entradas que coincidan.</p></div>}
         {filtered.map(t => {
