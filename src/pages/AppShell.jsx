@@ -100,18 +100,6 @@ export default function AppShell({ session }) {
       </aside>
 
       <main className="main-content">
-        {!data.dataExists && !data.loading && (
-          <div style={{ background: 'var(--amber-bg)', border: '1px solid var(--amber-border)', borderRadius: 12, padding: '14px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--amber)' }}>Importar datos existentes</div>
-              <div style={{ fontSize: 12, color: 'var(--amber)', marginTop: 3 }}>Tus trades están listos para importar.</div>
-            </div>
-            <button className="btn btn-main btn-sm" onClick={async () => {
-              try { await data.migrateFromPreload(); toast('¡Trades importados!', 'ok') }
-              catch (e) { toast('Error: ' + e.message, 'err') }
-            }}>↑ Importar datos</button>
-          </div>
-        )}
         {active === 'dashboard'   && <Dashboard ctx={ctx} />}
         {active === 'diario'      && <DiarioPage ctx={ctx} />}
         {active === 'cuentas'     && <CuentasPage ctx={ctx} />}
