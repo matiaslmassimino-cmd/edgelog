@@ -1,243 +1,47 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { fetchPublicDataBySlug } from '../lib/sync'
-import { rOf, calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcExpectancyCI, calcExecutionSplit, fmtR, calcMaxDD, calcFundedSummary, calcFundedCurve, calcFundedGrowth, calcEvaluationStats, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, calcSetups, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
+import { rOf, calcMetrics, isQuality, calcExpectancyCI, calcExecutionSplit, fmtR, calcMaxDD, calcFundedSummary, calcFundedGrowth, calcEvaluationStats, calcConsistency, buildEquityCurve, calcStreaks, calcSetups, parseFecha } from '../lib/metrics'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 
-const tip = { background: '#0F1828', border: '1px solid #1E3A5F', borderRadius: 10, fontSize: 11, color: '#E2E8F0', padding: '10px 14px' }
+const C = { bg: '#0B0F17', card: '#111827', line: '#1E2A3A', mute: '#4A6080', text: '#E2E8F0', soft: '#94A3B8', blue: '#3B82F6', blueL: '#60A5FA', gold: '#FBBF24', green: '#22C55E', red: '#EF4444', amber: '#F59E0B' }
+const serif = "'DM Serif Display',serif"
+const tip = { background: '#0F1828', border: '1px solid #1E3A5F', borderRadius: 10, fontSize: 11, color: C.text, padding: '10px 14px' }
+const sgn = (v, d = 1) => (v >= 0 ? '+' : '') + Number(v).toFixed(d)
 
-function InfoDot({ desc }) {
-  const [open, setOpen] = useState(false)
+function Section({ title, sub, children }) {
   return (
-    <span style={{ position: 'relative', display: 'inline-block', marginLeft: 6, verticalAlign: 'middle' }}>
-      <span onClick={() => setOpen(!open)}
-        style={{ cursor: 'pointer', fontSize: 10, color: '#4A6080', background: '#1A2235', border: '1px solid #2A3A52', borderRadius: '50%', width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, userSelect: 'none' }}>···</span>
-      {open && (
-        <div onClick={() => setOpen(false)} style={{ position: 'absolute', left: '50%', bottom: 22, transform: 'translateX(-50%)', background: '#0F1828', border: '1px solid #1E3A5F', borderRadius: 10, padding: '10px 14px', fontSize: 11, color: '#94A3B8', lineHeight: 1.6, width: 240, zIndex: 100, boxShadow: '0 8px 32px rgba(0,0,0,.6)' }}>
-          {desc}
-        </div>
-      )}
-    </span>
+    <section style={{ marginTop: 40 }}>
+      <div style={{ fontFamily: serif, fontSize: 22, color: C.text }}>{title}</div>
+      {sub && <div style={{ fontSize: 12.5, color: C.mute, margin: '4px 0 16px', lineHeight: 1.6, maxWidth: 680 }}>{sub}</div>}
+      {!sub && <div style={{ height: 14 }} />}
+      {children}
+    </section>
   )
 }
 
-function StatCard({ label, value, desc, color, sub, badge }) {
+function Card({ children, style }) {
+  return <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 16, padding: '18px 20px', ...style }}>{children}</div>
+}
+
+function Stat({ label, value, sub, color }) {
   return (
-    <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 14, padding: '16px 18px', position: 'relative', overflow: 'visible' }}>
-      <div style={{ position: 'absolute', top: 0, left: 0, width: 3, height: '100%', background: color || '#3B82F6', borderRadius: '14px 0 0 14px' }} />
-      <div style={{ fontSize: 9.5, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.12em', fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center' }}>
-        {label}{desc && <InfoDot desc={desc} />}
-      </div>
-      <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: color || '#E2E8F0', lineHeight: 1, marginBottom: 4 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#4A6080' }}>{sub}</div>}
-      {badge && <span style={{ display: 'inline-block', marginTop: 4, padding: '2px 8px', borderRadius: 4, background: 'rgba(59,130,246,.15)', color: '#60A5FA', fontSize: 10, fontWeight: 600, border: '1px solid rgba(59,130,246,.2)' }}>{badge}</span>}
-    </div>
+    <Card style={{ padding: '14px 16px' }}>
+      <div style={{ fontSize: 10, color: C.mute, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontFamily: serif, fontSize: 26, color: color || C.text, lineHeight: 1, marginBottom: 4 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: C.mute, lineHeight: 1.4 }}>{sub}</div>}
+    </Card>
   )
 }
 
-function SectionTitle({ children, sub }) {
-  return (
-    <div style={{ marginBottom: 14, marginTop: 28 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 3, height: 18, background: '#3B82F6', borderRadius: 3, flexShrink: 0 }} />
-        <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 17, color: '#E2E8F0' }}>{children}</div>
-      </div>
-      {sub && <div style={{ fontSize: 11.5, color: '#4A6080', marginTop: 3, paddingLeft: 13 }}>{sub}</div>}
-    </div>
-  )
-}
-
-// ── EXPLORADOR DE PERÍODOS ──
-function PeriodExplorer({ trades }) {
-  const [tab, setTab] = useState('month')
-  const [selectedKey, setSelectedKey] = useState(null)
-
-  const map = useMemo(() => groupByPeriod(trades, tab), [trades, tab])
-  const keys = useMemo(() => Object.keys(map).sort(), [map])
-
-  // Período actual
-  const now = new Date()
-  const kfn = tab === 'week'
-    ? d => { const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const day = tmp.getUTCDay() || 7; tmp.setUTCDate(tmp.getUTCDate() + 4 - day); const y = tmp.getUTCFullYear(); const w = Math.ceil(((tmp - Date.UTC(y, 0, 1)) / 86400000 + 1) / 7); return `${y}-W${w < 10 ? '0' : ''}${w}` }
-    : tab === 'month' ? d => `${d.getFullYear()}-${d.getMonth() < 9 ? '0' : ''}${d.getMonth() + 1}`
-    : d => `${d.getFullYear()}`
-  const curKey = kfn(now)
-  const curTrades = map[curKey] || []
-  const curM = periodMetrics(curTrades)
-
-  // Período seleccionado o todos
-  const activeTrades = useMemo(() => {
-    if (selectedKey && map[selectedKey]) return map[selectedKey]
-    return trades
-  }, [selectedKey, map, trades])
-
-  // Gráfico
-  const chartData = useMemo(() => {
-    const sorted = [...activeTrades]
-      .filter(e => ['Win','Loss','Breakeven'].includes(e.resultado))
-      .sort((a, b) => { const da = parseFecha(a.fecha), db = parseFecha(b.fecha); return (da - db) || (a.id - b.id) })
-    let running = 0
-    return [{ name: 'Inicio', pnl: 0 }].concat(sorted.map(t => {
-      running = parseFloat((running + rOf(t)).toFixed(4))
-      return { name: t.fecha, pnl: parseFloat(running.toFixed(2)) }
-    }))
-  }, [activeTrades])
-
-  const selM = selectedKey ? periodMetrics(map[selectedKey] || []) : null
-
-  return (
-    <div>
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, background: '#111827', border: '1px solid #1E2A3A', borderRadius: 12, padding: 4, marginBottom: 16, width: 'fit-content' }}>
-        {['week','month','year'].map(t => (
-          <button key={t}
-            onClick={() => { setTab(t); setSelectedKey(null) }}
-            style={{ padding: '8px 20px', borderRadius: 9, border: 'none', background: tab === t ? '#1E3A5F' : 'transparent', color: tab === t ? '#60A5FA' : '#4A6080', fontSize: 12.5, fontWeight: tab === t ? 700 : 400, cursor: 'pointer', transition: 'all .15s' }}>
-            {t === 'week' ? 'Semanas' : t === 'month' ? 'Meses' : 'Años'}
-          </button>
-        ))}
-      </div>
-
-      {/* KPIs período actual */}
-      {curTrades.length > 0 && !selectedKey && (
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 10, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.14em', fontWeight: 600, marginBottom: 10 }}>
-            Período actual — {keyLabel(curKey, tab)}
-          </div>
-          <div className="pub-grid-5" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8 }}>
-            {[
-              { label: 'Trades', value: curM.tr, sub: `${curM.days}d`, color: '#60A5FA' },
-              { label: 'Win rate', value: curM.wr !== null ? curM.wr + '%' : '—', sub: `${curM.w}W · ${curM.l}L`, color: curM.wr >= 50 ? '#22C55E' : '#EF4444' },
-              { label: 'WR ✦', value: curM.wrQ !== null ? curM.wrQ + '%' : '—', sub: `${curM.qCount} disciplinados`, color: '#EAB308' },
-              { label: 'R del período', value: fmtR(curM.rSum, 1), sub: 'acumulado', color: curM.rSum >= 0 ? '#22C55E' : '#EF4444' },
-              { label: 'R:R real', value: curM.avgRR !== null ? '1:' + curM.avgRR.toFixed(1) : '—', sub: 'promedio wins', color: curM.avgRR >= 2 ? '#22C55E' : '#94A3B8' },
-            ].map(({ label, value, sub, color }) => (
-              <div key={label} style={{ background: '#111827', border: '1px solid #1E2A3A', borderRadius: 12, padding: '12px 14px' }}>
-                <div style={{ fontSize: 9, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.12em', fontWeight: 600, marginBottom: 6 }}>{label}</div>
-                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color, lineHeight: 1, marginBottom: 3 }}>{value}</div>
-                <div style={{ fontSize: 10, color: '#4A6080' }}>{sub}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* KPIs período seleccionado */}
-      {selectedKey && selM && (
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-            <div style={{ fontSize: 10, color: '#60A5FA', textTransform: 'uppercase', letterSpacing: '.14em', fontWeight: 600 }}>
-              {keyLabel(selectedKey, tab)}
-            </div>
-            <button onClick={() => setSelectedKey(null)}
-              style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid #2A3A52', background: 'transparent', color: '#4A6080', fontSize: 11, cursor: 'pointer' }}>
-              ✕ Ver todos
-            </button>
-          </div>
-          <div className="pub-grid-5" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8 }}>
-            {[
-              { label: 'Trades', value: selM.tr, sub: `${selM.days}d`, color: '#60A5FA' },
-              { label: 'Win rate', value: selM.wr !== null ? selM.wr + '%' : '—', sub: `${selM.w}W · ${selM.l}L`, color: selM.wr >= 50 ? '#22C55E' : '#EF4444' },
-              { label: 'WR ✦', value: selM.wrQ !== null ? selM.wrQ + '%' : '—', sub: `${selM.qCount} disciplinados`, color: '#EAB308' },
-              { label: 'R del período', value: fmtR(selM.rSum, 1), sub: 'acumulado', color: selM.rSum >= 0 ? '#22C55E' : '#EF4444' },
-              { label: 'R:R real', value: selM.avgRR !== null ? '1:' + selM.avgRR.toFixed(1) : '—', sub: 'promedio wins', color: selM.avgRR >= 2 ? '#22C55E' : '#94A3B8' },
-            ].map(({ label, value, sub, color }) => (
-              <div key={label} style={{ background: '#111827', border: '1px solid #1E3A5F', borderRadius: 12, padding: '12px 14px' }}>
-                <div style={{ fontSize: 9, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.12em', fontWeight: 600, marginBottom: 6 }}>{label}</div>
-                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color, lineHeight: 1, marginBottom: 3 }}>{value}</div>
-                <div style={{ fontSize: 10, color: '#4A6080' }}>{sub}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Gráfico del período seleccionado (sin período elegido sería idéntico a la equity curve principal) */}
-      {selectedKey && <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, padding: '16px 20px', marginBottom: 14 }}>
-        <div style={{ fontSize: 10, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.12em', fontWeight: 600, marginBottom: 12 }}>
-          P&L acumulado — {selectedKey ? keyLabel(selectedKey, tab) : 'Todos los períodos'}
-        </div>
-        <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={chartData}>
-            <defs>
-              <linearGradient id="pnlGradPer" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.03)" />
-            <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-            <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + 'R'} />
-            <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + 'R', 'R acum.']} labelStyle={{ color: '#60A5FA', fontWeight: 600 }} />
-            <Area type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2.5} fill="url(#pnlGradPer)" dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#0B0F17', strokeWidth: 2 }} />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>}
-
-      {/* Lista de períodos clickeable */}
-      <div style={{ fontSize: 10, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.12em', fontWeight: 600, marginBottom: 8 }}>
-        Hacé clic en un período para ver su detalle
-      </div>
-      {/* Header tabla */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr 1fr 1fr 1fr', gap: 8, padding: '0 14px 6px', fontSize: 9, color: '#2A3A52', textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600 }}>
-        <span>Período</span>
-        <span style={{ textAlign: 'right' }}>Trades</span>
-        <span style={{ textAlign: 'right' }}>Win rate</span>
-        <span style={{ textAlign: 'right' }}>WR ✦</span>
-        <span style={{ textAlign: 'right' }}>R</span>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {[...keys].reverse().map(k => {
-          const m = periodMetrics(map[k])
-          const isSel = selectedKey === k
-          const isCur = k === curKey
-          return (
-            <div key={k} onClick={() => setSelectedKey(isSel ? null : k)}
-              style={{
-                display: 'grid', gridTemplateColumns: '1.8fr 1fr 1fr 1fr 1fr', gap: 8,
-                alignItems: 'center', padding: '12px 14px', borderRadius: 12,
-                background: isSel ? 'linear-gradient(135deg, #0F2040, #1A3060)' : isCur ? 'rgba(59,130,246,.06)' : '#111827',
-                border: `1px solid ${isSel ? '#3B82F6' : isCur ? 'rgba(59,130,246,.3)' : '#1E2A3A'}`,
-                cursor: 'pointer', transition: 'all .18s',
-                boxShadow: isSel ? '0 4px 20px rgba(59,130,246,.15)' : 'none'
-              }}
-              onMouseEnter={e => { if (!isSel) e.currentTarget.style.borderColor = '#2A3A52' }}
-              onMouseLeave={e => { if (!isSel) e.currentTarget.style.borderColor = isCur ? 'rgba(59,130,246,.3)' : '#1E2A3A' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: isSel ? '#60A5FA' : '#E2E8F0' }}>{keyLabel(k, tab)}</div>
-                  {isCur && <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: 'rgba(59,130,246,.15)', color: '#60A5FA', border: '1px solid rgba(59,130,246,.3)', fontWeight: 600 }}>ACTUAL</span>}
-                </div>
-                {/* Mini heatmap */}
-                <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                  {(map[k] || [])
-                    .filter(e => ['Win','Loss','Breakeven'].includes(e.resultado))
-                    .slice(0, 24)
-                    .map((e, i) => (
-                      <span key={i} style={{ width: 7, height: 7, borderRadius: 2, background: e.resultado === 'Win' ? '#22C55E' : e.resultado === 'Loss' ? '#EF4444' : '#F59E0B', display: 'inline-block', opacity: isQuality(e) ? .9 : .35 }} />
-                    ))}
-                </div>
-              </div>
-              <div style={{ textAlign: 'right', fontSize: 12.5, color: '#94A3B8' }}>{m.tr} <span style={{ fontSize: 10, color: '#4A6080' }}>{m.days}d</span></div>
-              <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: m.wr !== null ? (m.wr >= 50 ? '#22C55E' : '#EF4444') : '#2A3A52' }}>{m.wr !== null ? m.wr + '%' : '—'}</div>
-              <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: m.wrQ !== null ? (m.wrQ >= 50 ? '#22C55E' : '#EF4444') : '#2A3A52' }}>{m.wrQ !== null ? m.wrQ + '%' : '—'}</div>
-              <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: m.rSum >= 0 ? '#22C55E' : '#EF4444' }}>{fmtR(m.rSum, 1)}</div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ── MAIN PUBLIC PAGE ──
 export default function Public() {
   const { slug } = useParams()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [showLog, setShowLog] = useState(false)
   const [page, setPage] = useState(1)
-  const [perPage, setPerPage] = useState(20)
+  const perPage = 20
 
   useEffect(() => {
     if (!slug) { setError('URL inválida.'); setLoading(false); return }
@@ -247,367 +51,274 @@ export default function Public() {
   }, [slug])
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0B0F17', fontFamily: "'DM Serif Display',serif", fontSize: 22, color: '#E2E8F0' }}>
-      Edge<em style={{ color: '#60A5FA', fontStyle: 'italic' }}>Log</em>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: C.bg, fontFamily: serif, fontSize: 22, color: C.text }}>
+      Edge<em style={{ color: C.blueL, fontStyle: 'italic' }}>Log</em>
     </div>
   )
   if (error || !data?.profile) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0B0F17', color: '#EF4444', fontSize: 14, padding: 20, textAlign: 'center' }}>{error || 'Perfil no encontrado.'}</div>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: C.bg, color: C.red, fontSize: 14, padding: 20, textAlign: 'center' }}>{error || 'Perfil no encontrado.'}</div>
   )
 
   const { profile, accounts, trades } = data
   const g = calcMetrics(trades)
-  const qTrades = trades.filter(isQuality)
-  const gQ = calcMetrics(qTrades)
-  const edge = calcEdgeRatio(trades)
-  const exp = calcExpectancy(trades)
   const ci = calcExpectancyCI(trades)
   const cons = calcConsistency(trades)
   const streaks = calcStreaks(trades)
   const nSetups = calcSetups(trades).length
-  const aum = calcAUM(accounts, trades, {})
-  const equityData = buildEquityCurve(trades, 'R')
+  const equity = buildEquityCurve(trades, 'R')
   const funded = calcFundedSummary(trades, accounts)
-  const fundedCurve = calcFundedCurve(funded.trades, accounts)
   const growth = calcFundedGrowth(trades, accounts)
   const evals = calcEvaluationStats(accounts)
   const ddR = calcMaxDD(trades, 'R'), ddPct = calcMaxDD(trades)
   const split = calcExecutionSplit(trades)
   const dateStr = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
-  const dates = trades.map(e => e.fecha).filter(Boolean).sort()
-  const firstDate = dates[0] ? new Date(dates[0].split('/').reverse().join('-')) : null
-  const spanDays = firstDate ? Math.round((new Date() - firstDate) / 86400000) : 0
+  const dates = trades.map(e => e.fecha).filter(Boolean).sort((a, b) => (parseFecha(a) || 0) - (parseFecha(b) || 0))
+  const first = dates[0] ? parseFecha(dates[0]) : null
+  const months = first ? Math.max(1, Math.round((new Date() - first) / 2629800000)) : 0
 
-  const accMap = {}
-  accounts.forEach(a => { accMap[String(a.id)] = a })
-
-  const sortedTrades = [...trades]
-    .filter(e => ['Win','Loss','Breakeven'].includes(e.resultado))
-    .sort((a, b) => { const da = parseFecha(a.fecha), db = parseFecha(b.fecha); return db - da })
-  const totalPages = Math.ceil(sortedTrades.length / perPage)
-  const visibleTrades = sortedTrades.slice((page - 1) * perPage, page * perPage)
-
+  const mn = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
   const monthMap = {}
   trades.forEach(t => {
     const d = t.fecha?.split('/')
     if (!d || d.length < 3) return
     const k = `${d[2]}-${d[1]}`
-    if (!monthMap[k]) monthMap[k] = []
-    monthMap[k].push(t)
+    ;(monthMap[k] = monthMap[k] || []).push(t)
   })
-  const monthlyData = Object.keys(monthMap).sort().map(k => {
-    const g2 = calcMetrics(monthMap[k])
-    const mn = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
-    return { name: mn[parseInt(k.split('-')[1]) - 1], pnl: parseFloat(g2.rSum.toFixed(1)) }
-  })
+  const monthly = Object.keys(monthMap).sort().map(k => ({ name: mn[parseInt(k.split('-')[1]) - 1], r: parseFloat(calcMetrics(monthMap[k]).rSum.toFixed(1)) }))
 
-  const heatmapTrades = [...trades]
-    .filter(e => ['Win','Loss','Breakeven'].includes(e.resultado))
-    .sort((a, b) => { const da = parseFecha(a.fecha), db = parseFecha(b.fecha); return da - db })
-    .slice(-48)
+  const sorted = [...trades].filter(e => ['Win', 'Loss', 'Breakeven'].includes(e.resultado)).sort((a, b) => (parseFecha(b.fecha) || 0) - (parseFecha(a.fecha) || 0))
+  const totalPages = Math.max(1, Math.ceil(sorted.length / perPage))
+  const visible = sorted.slice((page - 1) * perPage, page * perPage)
+
+  const exact = split.exact, rest = split.rest
+  const bio = profile.bio
+  const hasFunded = funded.n > 0
+  const pos = ci && ci.lo >= 0
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0B0F17', fontFamily: "'DM Sans',system-ui,sans-serif", color: '#E2E8F0' }}>
+    <div style={{ minHeight: '100vh', background: C.bg, fontFamily: "'DM Sans',system-ui,sans-serif", color: C.text }}>
       <style>{`
-        @media (max-width: 700px) {
-          .pub-hero { padding: 28px 16px 32px !important; }
-          .pub-hero-stats { flex-direction: column !important; gap: 12px !important; }
-          .pub-hero-stat { padding-right: 0 !important; margin-right: 0 !important; border-right: none !important; border-bottom: 1px solid rgba(255,255,255,.07); padding-bottom: 12px !important; }
-          .pub-hero-stat:last-child { border-bottom: none !important; }
-          .pub-content { padding: 16px 16px 60px !important; }
-          .pub-grid-2 { grid-template-columns: 1fr !important; }
-          .pub-grid-3 { grid-template-columns: 1fr 1fr !important; }
-          .pub-grid-5 { grid-template-columns: 1fr 1fr !important; }
-          .pub-table-wrap { overflow-x: auto !important; }
-          .pub-hero-val-big { font-size: 34px !important; }
-          .pub-hero-val { font-size: 22px !important; }
-          .pub-hero-title { font-size: 32px !important; }
-        }
-        @media (max-width: 420px) {
-          .pub-grid-3, .pub-grid-5 { grid-template-columns: 1fr !important; }
+        .p-wrap{max-width:960px;margin:0 auto;padding:0 24px 72px}
+        .p-hero{padding:56px 24px 44px;background:linear-gradient(135deg,#060D1F 0%,#0A1628 45%,#0F1E38 100%);border-bottom:1px solid #1E3A5F}
+        .p-grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+        .p-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+        .p-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+        @media (max-width:700px){
+          .p-hero{padding:36px 16px 32px}
+          .p-wrap{padding:0 16px 56px}
+          .p-grid4,.p-grid3{grid-template-columns:1fr 1fr}
+          .p-grid2{grid-template-columns:1fr}
+          .p-title{font-size:30px !important}
+          .p-big{font-size:34px !important}
         }
       `}</style>
 
       {/* HERO */}
-      <div className="pub-hero" style={{ background: 'linear-gradient(135deg, #060D1F 0%, #0A1628 40%, #0F1E38 100%)', borderBottom: '1px solid #1E3A5F', padding: '48px 60px 52px', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: -80, right: -80, width: 320, height: 320, borderRadius: '50%', background: 'radial-gradient(circle, rgba(59,130,246,.08) 0%, transparent 70%)' }} />
-        <div style={{ position: 'relative', maxWidth: 1100, margin: '0 auto' }}>
+      <div className="p-hero">
+        <div style={{ maxWidth: 960, margin: '0 auto' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 20, background: 'rgba(59,130,246,.12)', border: '1px solid rgba(59,130,246,.25)', marginBottom: 18 }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#22C55E', boxShadow: '0 0 6px #22C55E' }} />
-            <span style={{ fontSize: 10, color: '#60A5FA', fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase' }}>Track Record Verificado · {dateStr}</span>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.green, boxShadow: `0 0 6px ${C.green}` }} />
+            <span style={{ fontSize: 10, color: C.blueL, fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase' }}>Track record verificado · {dateStr}</span>
           </div>
-          <div className="pub-hero-title" style={{ fontFamily: "'DM Serif Display',serif", fontSize: 40, color: '#fff', lineHeight: 1, marginBottom: 4 }}>Edge<em style={{ color: '#60A5FA', fontStyle: 'italic' }}>Log</em></div>
-          <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 20, color: 'rgba(96,165,250,.65)', marginBottom: 4 }}>{profile.name || 'Trader'}</div>
-          <div style={{ fontSize: 12, color: '#4A6080', marginBottom: 28, lineHeight: 1.6 }}>
-            {profile.metodologia || 'Smart Money Concepts'} · {profile.par || 'EURUSD'} · {profile.sesion || 'Londres / NY'} · {spanDays} días operando
+          <div className="p-title" style={{ fontFamily: serif, fontSize: 42, color: '#fff', lineHeight: 1.05 }}>{profile.name || 'Trader'}</div>
+          <div style={{ fontSize: 14, color: C.soft, marginTop: 8, lineHeight: 1.6 }}>
+            Trader de {profile.par || 'EURUSD'} · {profile.metodologia || 'Smart Money Concepts'} · {profile.sesion || 'Londres / NY'}
           </div>
-          <div className="pub-hero-stats" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          <div style={{ fontSize: 12, color: C.mute, marginTop: 4 }}>{months} meses de historial · {g.n} operaciones · {nSetups} setups · registrado en EdgeLog</div>
+
+          <div className="p-grid4" style={{ marginTop: 32 }}>
             {[
-              { label: 'R acumulado', value: (g.rSum >= 0 ? '+' : '') + g.rSum.toFixed(1) + 'R', sub: `${nSetups} setups · 1R = riesgo por trade`, color: g.rSum >= 0 ? '#22C55E' : '#EF4444', big: true },
-              { label: 'Expectativa', value: g.avgR !== null ? (g.avgR >= 0 ? '+' : '') + g.avgR.toFixed(2) + 'R' : '—', sub: ci ? `IC 95%: ${ci.lo >= 0 ? '+' : ''}${ci.lo} a ${ci.hi >= 0 ? '+' : ''}${ci.hi}` : 'por trade', color: g.avgR > 0 ? '#22C55E' : '#EF4444' },
-              { label: 'Win rate', value: g.wr !== null ? g.wr + '%' : '—', sub: 'sin contar breakeven', color: g.wr >= 50 ? '#22C55E' : '#EF4444' },
-              { label: 'WR plan exacto ✦', value: gQ.wr !== null ? gQ.wr + '%' : '—', sub: `${gQ.n} trades`, color: '#EAB308' },
-              { label: 'Prof. factor (R)', value: g.pf !== null ? g.pf.toFixed(2) : '—', color: g.pf >= 1.5 ? '#22C55E' : '#F59E0B' },
-              { label: 'Trades', value: String(g.n), sub: `${nSetups} setups · ${g.w}W · ${g.l}L`, color: '#E2E8F0' },
-              { label: 'Capital fondeado', value: '$' + aum.funded.toLocaleString(), sub: `+ $${aum.challenge.toLocaleString()} en evaluación`, color: '#60A5FA' },
-            ].map(({ label, value, sub, color, big }, i) => (
-              <div key={label} className="pub-hero-stat" style={{ paddingRight: 28, marginRight: 28, borderRight: i < 6 ? '1px solid rgba(255,255,255,.07)' : 'none', marginBottom: 8 }}>
-                <div style={{ fontSize: 9.5, color: 'rgba(96,165,250,.4)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 4 }}>{label}</div>
-                <div className={big ? 'pub-hero-val-big' : 'pub-hero-val'} style={{ fontFamily: "'DM Serif Display',serif", fontSize: big ? 40 : 26, color, lineHeight: 1 }}>{value}</div>
-                {sub && <div style={{ fontSize: 10, color: '#4A6080', marginTop: 5 }}>{sub}</div>}
+              hasFunded && { l: 'Capital fondeado', v: '$' + funded.capital.toLocaleString('es-AR'), s: `${funded.accounts} cuentas activas`, c: C.gold },
+              hasFunded && { l: 'Rentabilidad fondeadas', v: sgn(funded.pct, 2) + '%', s: `${funded.usd >= 0 ? '+' : '−'}$${Math.abs(funded.usd).toLocaleString('es-AR')} sobre capital, sin compuesto`, c: funded.pct >= 0 ? C.green : C.red },
+              { l: 'Resultado total', v: sgn(g.rSum) + 'R', s: '1R = lo arriesgado por trade', c: g.rSum >= 0 ? C.green : C.red },
+              { l: 'Expectativa', v: g.avgR !== null ? sgn(g.avgR, 2) + 'R' : '—', s: 'ganancia media por trade', c: g.avgR > 0 ? C.green : C.red },
+            ].filter(Boolean).map(s => (
+              <div key={s.l}>
+                <div style={{ fontSize: 10, color: 'rgba(96,165,250,.55)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 6 }}>{s.l}</div>
+                <div className="p-big" style={{ fontFamily: serif, fontSize: 38, color: s.c, lineHeight: 1 }}>{s.v}</div>
+                <div style={{ fontSize: 11, color: C.mute, marginTop: 6, lineHeight: 1.4 }}>{s.s}</div>
               </div>
             ))}
           </div>
-          <div style={{ marginTop: 14, fontSize: 11, color: '#4A6080', maxWidth: 640, lineHeight: 1.6 }}>
-            <b style={{ color: '#60A5FA' }}>¿Qué es R?</b> Es la unidad de riesgo: 1R es lo que se arriesga en cada operación. Un trade que pierde es −1R; uno que gana el doble de lo arriesgado es +2R. Permite comparar operaciones con distinto riesgo y cuentas de distinto tamaño.
-          </div>
-          {profile.bio && (
-            <div style={{ marginTop: 20, padding: '12px 16px', background: 'rgba(255,255,255,.04)', borderRadius: 10, borderLeft: '3px solid #3B82F6', fontSize: 13, color: '#94A3B8', lineHeight: 1.7, maxWidth: 680 }}>{profile.bio}</div>
-          )}
         </div>
       </div>
 
-      {/* CONTENT */}
-      <div className="pub-content" style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 60px 80px' }}>
-
-        {/* Equity curve */}
-        <SectionTitle sub="Resultado acumulado en R (1R = el riesgo de cada trade), sumando todas las cuentas desde el primer trade. No equivale al retorno de un capital único.">Equity Curve</SectionTitle>
-        <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, padding: '16px 20px', marginBottom: 8 }}>
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={equityData}>
-              <defs>
-                <linearGradient id="pnlGradMain" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.03)" />
-              <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-              <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + 'R'} />
-              <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + 'R', 'P&L acum.']} labelStyle={{ color: '#60A5FA', fontWeight: 600 }} />
-              <Area type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2.5} fill="url(#pnlGradMain)" dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#0B0F17', strokeWidth: 2 }} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-        <div style={{ display: 'flex', gap: 16, fontSize: 11, color: '#4A6080', marginBottom: 4, flexWrap: 'wrap' }}>
-          <span>🟢 {g.w} ganadores</span><span>🔴 {g.l} perdedores</span>
-          <span>🟡 {trades.filter(t => t.resultado === 'Breakeven').length} breakeven</span>
-          <span>📅 {spanDays} días</span>
-        </div>
-
-        {/* ── CUENTAS FONDEADAS ── */}
-        {funded.n > 0 && (<>
-          <SectionTitle sub="Rendimiento de las operaciones realizadas en cuentas fondeadas (capital de la firma).">Cuentas fondeadas</SectionTitle>
-          <div style={{ background: 'linear-gradient(135deg, #1A1400, #111827)', border: '1px solid #92400E', borderRadius: 16, padding: '20px 22px', marginBottom: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
-              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 38, color: '#FBBF24', lineHeight: 1 }}>${funded.capital.toLocaleString('es-AR')}</div>
-              <div style={{ fontSize: 12, color: '#94A3B8' }}>en {funded.accounts} cuentas fondeadas activas · {funded.n} operaciones · P&L bruto <b style={{ color: funded.usd >= 0 ? '#22C55E' : '#EF4444' }}>{funded.usd >= 0 ? '+' : ''}${funded.usd.toLocaleString('es-AR')}</b></div>
+      <div className="p-wrap">
+        {/* Resumen */}
+        <Section title="En una frase">
+          <Card>
+            <div style={{ fontSize: 15, color: C.text, lineHeight: 1.75 }}>
+              Operador discrecional de un solo par con riesgo fijo por operación. Acierta
+              {' '}<b style={{ color: C.text }}>{g.wr}%</b> de las operaciones, pero cuando gana obtiene en promedio
+              {' '}<b style={{ color: C.green }}>{g.avgRR?.toFixed(1)} veces</b> lo arriesgado, lo que deja un profit factor de
+              {' '}<b style={{ color: C.green }}>{g.pf?.toFixed(2)}</b> y una expectativa positiva.
+              {hasFunded && <> Hoy gestiona <b style={{ color: C.gold }}>${funded.capital.toLocaleString('es-AR')}</b> de capital de firmas de fondeo y su método ya pasó <b>{evals.passed}</b> fases de evaluación.</>}
             </div>
-            <div className="pub-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginBottom: 14 }}>
-              <StatCard label="Rentabilidad" value={(funded.pct >= 0 ? '+' : '') + funded.pct + '%'} color={funded.pct >= 0 ? '#22C55E' : '#EF4444'} sub="sobre capital, sin compuesto" desc="Ganancia total sobre el capital inicial de las cuentas fondeadas. No usa interés compuesto: cada operación se mide sobre el tamaño original de la cuenta." />
-              <StatCard label="R acumulado" value={fmtR(funded.m.rSum)} color={funded.m.rSum >= 0 ? '#22C55E' : '#EF4444'} sub={`${funded.m.w}W · ${funded.m.l}L · ${funded.m.be} BE`} desc="Suma del resultado de todas las operaciones en cuentas fondeadas, medido en R." />
-              <StatCard label="Expectativa" value={fmtR(funded.m.avgR, 2)} color={funded.m.avgR > 0 ? '#22C55E' : '#EF4444'} sub="por trade" desc="Resultado promedio por operación en cuentas fondeadas." />
-              <StatCard label="Win rate" value={funded.m.wr !== null ? funded.m.wr + '%' : '—'} color={funded.m.wr >= 50 ? '#22C55E' : '#F59E0B'} sub="sin contar breakeven" desc="Porcentaje de operaciones ganadoras sobre ganadoras más perdedoras." />
-              <StatCard label="Profit factor" value={funded.m.pf !== null ? funded.m.pf.toFixed(2) : '—'} color={funded.m.pf >= 1.5 ? '#22C55E' : '#F59E0B'} sub="en R" desc="R ganado dividido por R perdido." />
-            </div>
-            <ResponsiveContainer width="100%" height={150}>
-              <AreaChart data={fundedCurve}>
-                <defs>
-                  <linearGradient id="pnlGradFund" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#FBBF24" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#FBBF24" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + '%'} />
-                <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'Fondeadas']} labelStyle={{ color: '#FBBF24', fontWeight: 600 }} />
-                <Area type="monotone" dataKey="pnl" stroke="#FBBF24" strokeWidth={2.2} fill="url(#pnlGradFund)" dot={false} />
+            {bio && <div style={{ marginTop: 14, paddingLeft: 14, borderLeft: `3px solid ${C.blue}`, fontSize: 13, color: C.soft, lineHeight: 1.7 }}>{bio}</div>}
+          </Card>
+        </Section>
+
+        {/* Resultados */}
+        <Section title="Resultados" sub="Resultado acumulado en R, sumando todas las cuentas desde el primer trade.">
+          <Card style={{ padding: '16px 12px 8px' }}>
+            <ResponsiveContainer width="100%" height={240}>
+              <AreaChart data={equity}>
+                <defs><linearGradient id="gEq" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={C.blue} stopOpacity={0.3} /><stop offset="95%" stopColor={C.blue} stopOpacity={0} /></linearGradient></defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)" />
+                <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: C.mute }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 9, fill: C.mute }} tickLine={false} axisLine={false} tickFormatter={v => sgn(v, 0) + 'R'} />
+                <Tooltip contentStyle={tip} formatter={v => [sgn(v) + 'R', 'Acumulado']} labelStyle={{ color: C.blueL, fontWeight: 600 }} />
+                <Area type="monotone" dataKey="pnl" stroke={C.blue} strokeWidth={2.5} fill="url(#gEq)" dot={false} />
               </AreaChart>
             </ResponsiveContainer>
-            {growth && growth.steps.length > 1 && (
-              <div style={{ marginTop: 14 }}>
-                <div style={{ fontSize: 10, color: '#92400E', letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: 4 }}>Crecimiento del capital fondeado · rentabilidad sobre capital promedio {growth.retAvg >= 0 ? '+' : ''}{growth.retAvg}% (${growth.avgCap.toLocaleString('es-AR')} promedio)</div>
-                <ResponsiveContainer width="100%" height={110}>
-                  <AreaChart data={growth.points}>
-                    <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                    <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => '$' + v / 1000 + 'k'} />
-                    <Tooltip contentStyle={tip} formatter={v => ['$' + v.toLocaleString('es-AR'), 'Capital']} labelStyle={{ color: '#FBBF24' }} />
-                    <Area type="stepAfter" dataKey="capital" stroke="#FBBF24" strokeWidth={2} fill="#FBBF24" fillOpacity={0.15} dot={false} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-            <div style={{ fontSize: 10.5, color: '#92400E', marginTop: 8 }}>
-              Evaluaciones: {evals.passed} fases aprobadas · {evals.lost} perdidas · {evals.running} en curso{evals.rate !== null ? ` (${evals.rate}% de aprobación)` : ''}.
-            </div>
-          </div>
-        </>)}
+          </Card>
 
-        {/* ── EXPLORADOR DE PERÍODOS ── */}
-        <SectionTitle sub="Explorá el rendimiento por semana, mes o año. Hacé clic en cualquier período para ver su detalle e historia.">
-          Explorador de rendimiento por período
-        </SectionTitle>
-        <PeriodExplorer trades={trades} />
-
-        {/* Métricas */}
-        <SectionTitle sub="Indicadores clave que miden la calidad y consistencia de la operativa.">Métricas de rendimiento</SectionTitle>
-        <div className="pub-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 6 }}>
-          <StatCard label="Profitability Factor" value={g.pf !== null ? g.pf.toFixed(2) : '—'} color={g.pf >= 1.5 ? '#22C55E' : g.pf >= 1 ? '#F59E0B' : '#EF4444'} sub={g.pf >= 1.5 ? 'Excelente' : 'Positivo'} desc="Relación entre ganancias brutas y pérdidas brutas. Un PF mayor a 1.5 indica que el sistema genera más de $1.50 por cada $1 perdido. Sólido desde 1.5, excelente sobre 2.0." />
-          <StatCard label="Win Rate Global" value={g.wr !== null ? g.wr + '%' : '—'} color={g.wr >= 50 ? '#22C55E' : '#EF4444'} sub={`${g.w}W · ${g.l}L`} desc="Porcentaje de operaciones cerradas con ganancia. Un WR alto solo no garantiza rentabilidad — importa combinarlo con el R:R promedio obtenido." />
-          <StatCard label="WR Disciplinado ✦" value={gQ.wr !== null ? gQ.wr + '%' : '—'} color="#EAB308" sub={`${qTrades.length} trades con plan exacto`} desc="Win rate calculado solo sobre operaciones con el plan ejecutado al 100%. Los trades 'Parcialmente' no cuentan como disciplinados." />
-          <StatCard label="R:R Real Promedio" value={g.avgRR !== null ? '1:' + g.avgRR.toFixed(2) : '—'} color={g.avgRR >= 2 ? '#22C55E' : '#F59E0B'} sub="sobre trades ganadores" desc="Risk:Reward real promedio en operaciones exitosas. Un R:R de 1:2 significa que gana el doble de lo que arriesga." />
-          <StatCard label="Expectancy por Trade" value={exp !== null ? (exp > 0 ? '+' : '') + exp + 'R' : '—'} color={exp > 0 ? '#22C55E' : '#EF4444'} sub={exp > 0 ? 'Edge positivo' : 'Sin edge'} desc="Ganancia o pérdida promedio esperada por operación. Si es positiva, el sistema tiene ventaja estadística y es rentable a largo plazo." />
-          <StatCard label="Drawdown máximo" value={ddR + 'R'} color={ddPct >= 8 ? '#EF4444' : '#F59E0B'} sub={`${ddPct}% de cuenta · peor cuenta`} desc="Mayor caída desde un máximo, medida cuenta por cuenta sobre el cierre de cada día. Se muestra la peor de todas las cuentas." />
-          <StatCard label="Racha perdedora máx." value={String(streaks.maxL)} color="#F59E0B" sub="setups seguidos (sin contar BE)" desc="Mayor cantidad de setups perdedores consecutivos. Un mismo setup operado en varias cuentas cuenta como uno. Los breakeven no cortan la racha." />
-          <StatCard label="Consistencia mensual" value={cons.pct !== null ? cons.pct + '%' : '—'} color={cons.pct >= 70 ? '#22C55E' : '#F59E0B'} sub={`${cons.months.filter(m => m.positive).length}/${cons.months.length} meses positivos (en R)`} desc="Porcentaje de meses cerrados en positivo. Una consistencia alta (+70%) indica resultados estables mes a mes." />
-        </div>
-
-        {/* Heatmap */}
-        <SectionTitle sub="Mapa visual de las últimas 48 operaciones. Verde = Win, Rojo = Loss, Amarillo = Breakeven. Opacidad baja = fuera de plan.">Historial visual</SectionTitle>
-        <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, padding: '16px 20px', marginBottom: 8 }}>
-          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 12 }}>
-            {heatmapTrades.map((t, i) => {
-              const color = t.resultado === 'Win' ? '#22C55E' : t.resultado === 'Loss' ? '#EF4444' : '#F59E0B'
-              const q = isQuality(t)
-              return (
-                <div key={i} title={`${t.fecha} · ${t.c_nombre} · ${t.resultado} · ${t.r_pnl >= 0 ? '+' : ''}${t.r_pnl?.toFixed(2)}%`}
-                  style={{ width: 24, height: 24, borderRadius: 5, background: color, opacity: q ? 0.9 : 0.3, cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {!q && <span style={{ fontSize: 7, color: 'rgba(255,255,255,.8)' }}>⚠</span>}
-                </div>
-              )
-            })}
-          </div>
-          <div style={{ display: 'flex', gap: 16, fontSize: 10.5, color: '#4A6080', flexWrap: 'wrap' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: '#22C55E', display: 'inline-block' }} /> Win disciplinado</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: '#EF4444', display: 'inline-block' }} /> Loss</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: '#F59E0B', display: 'inline-block' }} /> Breakeven</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: '#22C55E', opacity: .3, display: 'inline-block' }} /> Fuera de plan</span>
-          </div>
-        </div>
-
-        {/* Plan exacto vs resto (en R) */}
-        <SectionTitle sub="Resultado en R de los trades con el plan ejecutado al 100% contra el resto.">Plan exacto vs resto</SectionTitle>
-        <div className="pub-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderRadius: 16, overflow: 'hidden', border: '1px solid #1E2A3A', marginBottom: 6 }}>
-          <div style={{ padding: '24px 28px', background: 'linear-gradient(135deg, #0D1B2E, #111827)' }}>
-            <div style={{ fontSize: 9.5, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 8, fontWeight: 600 }}>Todos los trades</div>
-            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 40, color: split.all.rSum >= 0 ? '#22C55E' : '#EF4444', lineHeight: 1, marginBottom: 6 }}>{fmtR(split.all.rSum)}</div>
-            <div style={{ fontSize: 11.5, color: '#4A6080' }}>{split.all.n} operaciones · expectativa {fmtR(split.all.avgR, 2)} por trade</div>
-          </div>
-          <div style={{ padding: '24px 28px', background: 'linear-gradient(135deg, #0F2040, #1A3060)', borderLeft: '1px solid #1E3A5F' }}>
-            <div style={{ fontSize: 9.5, color: 'rgba(96,165,250,.6)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 8, fontWeight: 600 }}>Solo plan exacto ✦</div>
-            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 40, color: '#E2E8F0', lineHeight: 1, marginBottom: 6 }}>{fmtR(split.exact.rSum)}</div>
-            <div style={{ fontSize: 11.5, color: 'rgba(96,165,250,.5)' }}>{split.exact.n} trades · expectativa {fmtR(split.exact.avgR, 2)} · WR {split.exact.wr !== null ? split.exact.wr + '%' : '—'}</div>
-          </div>
-          <div style={{ gridColumn: '1/-1', background: '#1A1400', borderTop: '1px solid #92400E', padding: '14px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-            <div>
-              <div style={{ fontSize: 12, color: '#F59E0B', fontWeight: 500 }}>Resto de los trades — {split.rest.n} fuera del plan exacto · expectativa {fmtR(split.rest.avgR, 2)}</div>
-              <div style={{ fontSize: 10.5, color: '#92400E', marginTop: 2 }}>El plan de los trades históricos se calificó a mano después de cada operación; los trades nuevos lo derivan de un checklist previo al trade.</div>
-            </div>
-            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: '#F59E0B' }}>{fmtR(split.rest.rSum)}</div>
-          </div>
-        </div>
-
-        {/* P&L mensual */}
-        <SectionTitle sub="Resultado neto de cada mes, en R.">Resultados mensuales</SectionTitle>
-        <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, padding: '16px 20px', marginBottom: 6 }}>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={monthlyData}>
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + 'R'} />
-              <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + 'R', 'Resultado mensual']} />
-              <Bar dataKey="pnl" radius={[5, 5, 0, 0]}>
-                {monthlyData.map((entry, i) => <Cell key={i} fill={entry.pnl >= 0 ? '#22C55E' : '#EF4444'} fillOpacity={0.85} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Tabla de operaciones */}
-        <SectionTitle sub="Registro completo de todas las operaciones con fecha, dirección, par, resultado y P&L en % y $.">Registro de operaciones</SectionTitle>
-        <div className="pub-table-wrap" style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, overflow: 'auto', marginBottom: 10 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 600 }}>
-            <thead>
-              <tr style={{ background: '#0A1628' }}>
-                {['Fecha','Cuenta','Dir.','Par','Resultado','Riesgo','R:R','P&L %','P&L $','Plan','Cal.'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '10px 12px', fontSize: 9, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600, borderBottom: '1px solid #1E2A3A', whiteSpace: 'nowrap' }}>{h}</th>
+          {hasFunded && (
+            <div className="p-grid2" style={{ marginTop: 12 }}>
+              <Card style={{ borderColor: '#92400E', background: 'linear-gradient(135deg,#1A1400,#111827)' }}>
+                <div style={{ fontSize: 10, color: C.gold, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, marginBottom: 10 }}>Cuentas fondeadas · {funded.n} trades</div>
+                {[
+                  ['Rentabilidad', sgn(funded.pct, 2) + '%', funded.pct >= 0 ? C.green : C.red],
+                  ['Resultado', sgn(funded.m.rSum) + 'R', funded.m.rSum >= 0 ? C.green : C.red],
+                  ['Expectativa', funded.m.avgR !== null ? sgn(funded.m.avgR, 2) + 'R' : '—', C.green],
+                  ['Win rate · Profit factor', `${funded.m.wr ?? '—'}% · ${funded.m.pf?.toFixed(2) ?? '—'}`, C.text],
+                ].map(([k, v, c]) => (
+                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,.05)', fontSize: 13 }}>
+                    <span style={{ color: C.soft }}>{k}</span><b style={{ color: c }}>{v}</b>
+                  </div>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {visibleTrades.map((t, idx) => {
-                const acc = accMap[String(t.cid)]
-                const cap = acc?.capital || 10000
-                const pnlUSD = parseFloat((t.r_pnl / 100 * cap).toFixed(2))
-                const q = isQuality(t)
-                const resColor = t.resultado === 'Win' ? '#22C55E' : t.resultado === 'Loss' ? '#EF4444' : '#F59E0B'
-                const dirColor = t.direccion === 'Compra' ? '#22C55E' : t.direccion === 'Venta' ? '#EF4444' : '#4A6080'
-                const planColor = t.plan === '100% exacto' ? '#22C55E' : t.plan === 'Parcialmente' ? '#F59E0B' : '#EF4444'
-                return (
-                  <tr key={t.id || idx} style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,.015)' }}>
-                    <td style={{ padding: '8px 12px', color: '#94A3B8', borderBottom: '1px solid #0F1828', whiteSpace: 'nowrap', fontSize: 11 }}>{t.fecha}</td>
-                    <td style={{ padding: '8px 12px', color: '#60A5FA', borderBottom: '1px solid #0F1828', fontSize: 10.5 }}>{t.c_nombre}</td>
-                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828', whiteSpace: 'nowrap' }}>
-                      {t.direccion && t.direccion !== '—' ? <span style={{ color: dirColor, fontWeight: 700, fontSize: 11 }}>{t.direccion === 'Compra' ? '▲' : '▼'} {t.direccion}</span> : <span style={{ color: '#2A3A52' }}>—</span>}
-                    </td>
-                    <td style={{ padding: '8px 12px', color: '#94A3B8', borderBottom: '1px solid #0F1828', fontWeight: 500 }}>{t.par || 'EURUSD'}</td>
-                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828' }}><span style={{ color: resColor, fontWeight: 700, fontSize: 11 }}>{t.resultado}</span></td>
-                    <td style={{ padding: '8px 12px', color: '#4A6080', borderBottom: '1px solid #0F1828', fontSize: 11 }}>{t.risk || (t.rp ? t.rp + '%' : '—')}</td>
-                    <td style={{ padding: '8px 12px', color: '#94A3B8', borderBottom: '1px solid #0F1828', fontSize: 11 }}>
-                      {t.rr_real && t.rr_real > 0 ? '1:' + parseFloat(t.rr_real).toFixed(1) : t.rr && t.rr > 0 ? '1:' + parseFloat(t.rr).toFixed(1) : '—'}
-                    </td>
-                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828', fontWeight: 700, color: t.r_pnl >= 0 ? '#22C55E' : '#EF4444', fontSize: 12, whiteSpace: 'nowrap' }}>{t.r_pnl >= 0 ? '+' : ''}{t.r_pnl?.toFixed(2)}%</td>
-                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828', fontWeight: 700, color: pnlUSD >= 0 ? '#22C55E' : '#EF4444', fontSize: 12, whiteSpace: 'nowrap' }}>{pnlUSD >= 0 ? '+' : ''}${Math.abs(pnlUSD).toFixed(0)}</td>
-                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828' }}><span style={{ fontSize: 11, color: planColor, fontWeight: 700 }}>{t.plan === '100% exacto' ? '✓' : t.plan === 'Parcialmente' ? '~' : t.plan === 'No cumplía' ? '✕' : '—'}</span></td>
-                    <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828', fontSize: 13 }}>{q ? <span style={{ color: '#22C55E' }}>✦</span> : <span style={{ color: '#EF4444', opacity: .5 }}>⚠</span>}</td>
+                <div style={{ fontSize: 11, color: C.mute, marginTop: 10, lineHeight: 1.5 }}>Riesgo de 1–1,5% por operación. Cada trade se mide sobre el tamaño original de la cuenta (sin interés compuesto).</div>
+              </Card>
+              <Card>
+                <div style={{ fontSize: 10, color: C.mute, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, marginBottom: 6 }}>Crecimiento del capital fondeado</div>
+                {growth && growth.steps.length > 1 ? (
+                  <>
+                    <ResponsiveContainer width="100%" height={140}>
+                      <AreaChart data={growth.points}>
+                        <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: C.mute }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                        <YAxis tick={{ fontSize: 9, fill: C.mute }} tickLine={false} axisLine={false} tickFormatter={v => '$' + v / 1000 + 'k'} />
+                        <Tooltip contentStyle={tip} formatter={v => ['$' + v.toLocaleString('es-AR'), 'Capital']} labelStyle={{ color: C.gold }} />
+                        <Area type="stepAfter" dataKey="capital" stroke={C.gold} strokeWidth={2} fill={C.gold} fillOpacity={0.15} dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                    <div style={{ fontSize: 11, color: C.mute, lineHeight: 1.5 }}>Cada escalón es una cuenta fondeada nueva. Sobre el capital promedio operado (${growth.avgCap.toLocaleString('es-AR')}) el retorno es <b style={{ color: C.green }}>{sgn(growth.retAvg, 2)}%</b>.</div>
+                  </>
+                ) : <div style={{ fontSize: 12, color: C.mute }}>Sin datos suficientes.</div>}
+              </Card>
+            </div>
+          )}
+        </Section>
+
+        {/* Calidad */}
+        <Section title="Calidad del método">
+          <div className="p-grid3">
+            <Stat label="Win rate" value={g.wr + '%'} sub={`${g.w} ganadas · ${g.l} perdidas · ${g.be} BE`} color={g.wr >= 50 ? C.green : C.amber} />
+            <Stat label="Profit factor" value={g.pf?.toFixed(2) ?? '—'} sub="R ganado por cada R perdido" color={g.pf >= 1.5 ? C.green : C.amber} />
+            <Stat label="Ganancia media" value={g.avgRR ? '1:' + g.avgRR.toFixed(1) : '—'} sub="del riesgo, en trades ganadores" color={C.green} />
+            <Stat label="Caída máxima" value={ddR + 'R'} sub={`${ddPct}% en la peor cuenta`} color={ddPct >= 8 ? C.red : C.amber} />
+            <Stat label="Peor racha" value={streaks.maxL + ' setups'} sub="perdedores consecutivos" color={C.amber} />
+            <Stat label="Meses positivos" value={cons.pct !== null ? cons.pct + '%' : '—'} sub={`${cons.months.filter(m => m.positive).length} de ${cons.months.length} (en R)`} color={cons.pct >= 70 ? C.green : C.amber} />
+          </div>
+          <Card style={{ marginTop: 12, padding: '14px 16px 6px' }}>
+            <div style={{ fontSize: 10, color: C.mute, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600, marginBottom: 8 }}>Resultado mensual en R</div>
+            <ResponsiveContainer width="100%" height={140}>
+              <BarChart data={monthly}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: C.mute }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 9, fill: C.mute }} tickLine={false} axisLine={false} tickFormatter={v => sgn(v, 0)} />
+                <Tooltip contentStyle={tip} formatter={v => [sgn(v) + 'R', 'Mes']} cursor={{ fill: 'rgba(255,255,255,.03)' }} />
+                <Bar dataKey="r" radius={[4, 4, 0, 0]}>{monthly.map((m, i) => <Cell key={i} fill={m.r >= 0 ? C.green : C.red} />)}</Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </Section>
+
+        {/* Disciplina */}
+        {exact.n > 0 && rest.n > 0 && (
+          <Section title="Disciplina" sub="Cada operación se clasifica según cumpla o no el plan completo antes de entrar.">
+            <div className="p-grid2">
+              <Card>
+                <div style={{ fontSize: 10, color: C.green, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600 }}>Plan 100% exacto · {exact.n} trades</div>
+                <div style={{ fontFamily: serif, fontSize: 32, color: exact.rSum >= 0 ? C.green : C.red, margin: '8px 0 4px' }}>{sgn(exact.rSum)}R</div>
+                <div style={{ fontSize: 12, color: C.soft }}>Win rate {exact.wr}% · expectativa {sgn(exact.avgR, 2)}R</div>
+              </Card>
+              <Card>
+                <div style={{ fontSize: 10, color: C.amber, textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600 }}>Parciales o fuera de plan · {rest.n} trades</div>
+                <div style={{ fontFamily: serif, fontSize: 32, color: rest.rSum >= 0 ? C.green : C.red, margin: '8px 0 4px' }}>{sgn(rest.rSum)}R</div>
+                <div style={{ fontSize: 12, color: C.soft }}>Win rate {rest.wr}% · expectativa {sgn(rest.avgR, 2)}R</div>
+              </Card>
+            </div>
+            <div style={{ fontSize: 11.5, color: C.mute, marginTop: 10, lineHeight: 1.6 }}>
+              La ventaja se concentra en los setups que cumplen el plan completo; el resto de operaciones resta. Nota: en los primeros meses la clasificación del plan se asignó manualmente, por lo que esta comparación sobrestima la diferencia.
+            </div>
+          </Section>
+        )}
+
+        {/* Evaluaciones */}
+        {(evals.passed + evals.lost) > 0 && (
+          <Section title="Evaluaciones de fondeo" sub="Las cuentas de evaluación se operan con más riesgo (hasta 2%) para superarlas rápido; las fondeadas, con menos.">
+            <div className="p-grid3">
+              <Stat label="Fases aprobadas" value={String(evals.passed)} color={C.green} />
+              <Stat label="Fases perdidas" value={String(evals.lost)} color={C.red} />
+              <Stat label="Tasa de aprobación" value={evals.rate !== null ? evals.rate + '%' : '—'} sub={evals.running ? `${evals.running} en curso` : undefined} color={C.blueL} />
+            </div>
+          </Section>
+        )}
+
+        {/* Transparencia */}
+        <Section title="Qué dicen los datos, con honestidad">
+          <Card style={{ fontSize: 13, color: C.soft, lineHeight: 1.8 }}>
+            <div>• Muestra: <b style={{ color: C.text }}>{g.n} operaciones en {nSetups} setups</b> (un mismo setup puede operarse en varias cuentas y cuenta como una sola decisión).</div>
+            {ci && <div>• Intervalo de confianza de la expectativa (95%): <b style={{ color: C.text }}>{sgn(ci.lo, 2)}R a {sgn(ci.hi, 2)}R</b>. {pos ? 'El rango es positivo.' : 'El rango incluye el cero: la muestra todavía es chica para afirmar una ventaja estadística firme; la tendencia es positiva.'}</div>}
+            <div>• Todo se mide en R (riesgo por trade), no sobre un capital inventado. Las rentabilidades % de fondeadas son sobre el capital real de cada cuenta.</div>
+            <div>• Los resultados pasados no garantizan resultados futuros.</div>
+          </Card>
+        </Section>
+
+        {/* Registro */}
+        <Section title="Registro de operaciones" sub="Cada operación, sin editar. Las cuentas se muestran enmascaradas.">
+          <button onClick={() => setShowLog(s => !s)} style={{ padding: '10px 18px', borderRadius: 10, border: `1px solid ${C.line}`, background: C.card, color: C.blueL, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            {showLog ? 'Ocultar registro' : `Ver las ${sorted.length} operaciones`}
+          </button>
+          {showLog && (
+            <Card style={{ marginTop: 12, padding: 0, overflow: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 560 }}>
+                <thead>
+                  <tr style={{ background: '#0A1628' }}>
+                    {['Fecha', 'Cuenta', 'Dir.', 'Resultado', 'R', 'Plan'].map(h => (
+                      <th key={h} style={{ textAlign: 'left', padding: '10px 12px', fontSize: 9, color: C.mute, textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600, borderBottom: `1px solid ${C.line}` }}>{h}</th>
+                    ))}
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {visible.map((t, i) => {
+                    const rc = rOf(t)
+                    const col = t.resultado === 'Win' ? C.green : t.resultado === 'Loss' ? C.red : C.amber
+                    return (
+                      <tr key={t.id || i} style={{ background: i % 2 ? 'rgba(255,255,255,.015)' : 'transparent' }}>
+                        <td style={{ padding: '8px 12px', color: C.soft, borderBottom: '1px solid #0F1828', whiteSpace: 'nowrap' }}>{t.fecha}</td>
+                        <td style={{ padding: '8px 12px', color: C.blueL, borderBottom: '1px solid #0F1828', fontSize: 11 }}>{t.c_nombre}</td>
+                        <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828', color: t.direccion === 'Compra' ? C.green : t.direccion === 'Venta' ? C.red : C.mute }}>{t.direccion === 'Compra' ? '▲ Compra' : t.direccion === 'Venta' ? '▼ Venta' : '—'}</td>
+                        <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828', color: col, fontWeight: 700 }}>{t.resultado}</td>
+                        <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828', color: col, fontWeight: 700 }}>{isFinite(rc) ? sgn(rc, 2) + 'R' : '—'}</td>
+                        <td style={{ padding: '8px 12px', borderBottom: '1px solid #0F1828', color: isQuality(t) ? C.green : C.mute }}>{t.plan === '100% exacto' ? '✓ exacto' : t.plan === 'Parcialmente' ? '~ parcial' : t.plan === 'No cumplía' ? '✕ fuera' : '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.line}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: C.mute }}>
+                <button disabled={page === 1} onClick={() => setPage(p => p - 1)} style={{ padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.line}`, background: 'transparent', color: page === 1 ? '#2A3A52' : C.soft, cursor: 'pointer' }}>‹ Anterior</button>
+                <span>Página {page} de {totalPages}</span>
+                <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)} style={{ padding: '5px 12px', borderRadius: 6, border: `1px solid ${C.line}`, background: 'transparent', color: page === totalPages ? '#2A3A52' : C.soft, cursor: 'pointer' }}>Siguiente ›</button>
+              </div>
+            </Card>
+          )}
+        </Section>
 
-          {/* Paginación */}
-          <div style={{ padding: '12px 16px', borderTop: '1px solid #1E2A3A', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 11, color: '#4A6080' }}>Mostrar</span>
-              {[10, 20, 30, 50, 100].map(n => (
-                <button key={n} onClick={() => { setPerPage(n); setPage(1) }}
-                  style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${perPage === n ? '#3B82F6' : '#2A3A52'}`, background: perPage === n ? 'rgba(59,130,246,.15)' : 'transparent', color: perPage === n ? '#60A5FA' : '#4A6080', fontSize: 11.5, fontWeight: perPage === n ? 700 : 400, cursor: 'pointer' }}>{n}</button>
-              ))}
-              <span style={{ fontSize: 11, color: '#4A6080' }}>· {sortedTrades.length} total</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-              <button onClick={() => setPage(1)} disabled={page === 1} style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #2A3A52', background: 'transparent', color: page === 1 ? '#2A3A52' : '#94A3B8', fontSize: 12, cursor: page === 1 ? 'default' : 'pointer' }}>«</button>
-              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #2A3A52', background: 'transparent', color: page === 1 ? '#2A3A52' : '#94A3B8', fontSize: 12, cursor: page === 1 ? 'default' : 'pointer' }}>‹ Ant</button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
-                .reduce((acc, p, idx, arr) => { if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...'); acc.push(p); return acc }, [])
-                .map((p, i) => p === '...'
-                  ? <span key={'e' + i} style={{ fontSize: 11, color: '#2A3A52', padding: '0 4px' }}>···</span>
-                  : <button key={p} onClick={() => setPage(p)} style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${page === p ? '#3B82F6' : '#2A3A52'}`, background: page === p ? 'rgba(59,130,246,.15)' : 'transparent', color: page === p ? '#60A5FA' : '#94A3B8', fontSize: 12, fontWeight: page === p ? 700 : 400, cursor: 'pointer' }}>{p}</button>
-                )}
-              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #2A3A52', background: 'transparent', color: page === totalPages ? '#2A3A52' : '#94A3B8', fontSize: 12, cursor: page === totalPages ? 'default' : 'pointer' }}>Sig ›</button>
-              <button onClick={() => setPage(totalPages)} disabled={page === totalPages} style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #2A3A52', background: 'transparent', color: page === totalPages ? '#2A3A52' : '#94A3B8', fontSize: 12, cursor: page === totalPages ? 'default' : 'pointer' }}>»</button>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ fontSize: 10.5, color: '#4A6080', marginBottom: 24, lineHeight: 1.7 }}>
-          ✓ Plan exacto · ~ Parcialmente · ✕ Fuera de plan · ✦ Trade disciplinado · ⚠ Fuera de plan<br />
-          P&L $ calculado sobre el capital de la cuenta al momento del trade
-        </div>
-
-        {/* Footer */}
-        <div style={{ padding: '20px 24px', background: 'linear-gradient(135deg, #0D1B2E, #111827)', borderRadius: 14, border: '1px solid #1E2A3A' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
-            <div>
-              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: '#E2E8F0', marginBottom: 4 }}>Edge<em style={{ color: '#60A5FA', fontStyle: 'italic' }}>Log</em></div>
-              <div style={{ fontSize: 11, color: '#4A6080', lineHeight: 1.7 }}>Track record generado automáticamente. Trazabilidad completa por operación.</div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 11, color: '#4A6080' }}>Generado el {dateStr}</div>
-              <div style={{ fontSize: 11, color: '#4A6080', marginTop: 2 }}>{g.n} operaciones · {spanDays} días</div>
-            </div>
-          </div>
+        <div style={{ marginTop: 40, paddingTop: 20, borderTop: `1px solid ${C.line}`, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, fontSize: 11, color: C.mute }}>
+          <span style={{ fontFamily: serif, fontSize: 16, color: C.text }}>Edge<em style={{ color: C.blueL, fontStyle: 'italic' }}>Log</em></span>
+          <span>Track record generado automáticamente · {dateStr}</span>
         </div>
       </div>
     </div>
