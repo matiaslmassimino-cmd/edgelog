@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { fetchPublicDataBySlug } from '../lib/sync'
-import { calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcExpectancyCI, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
+import { calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcExpectancyCI, calcExecutionSplit, fmtR, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 
 const tip = { background: '#0F1828', border: '1px solid #1E3A5F', borderRadius: 10, fontSize: 11, color: '#E2E8F0', padding: '10px 14px' }
@@ -266,8 +266,7 @@ export default function Public() {
   const streaks = calcStreaks(trades)
   const aum = calcAUM(accounts, trades, {})
   const equityData = buildEquityCurve(trades)
-  const violated = trades.filter(e => !isQuality(e))
-  const potentialPnl = parseFloat((g.pnl - violated.reduce((s, e) => s + (e.r_pnl || 0), 0)).toFixed(2))
+  const split = calcExecutionSplit(trades)
   const dateStr = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
   const dates = trades.map(e => e.fecha).filter(Boolean).sort()
   const firstDate = dates[0] ? new Date(dates[0].split('/').reverse().join('-')) : null
@@ -427,25 +426,25 @@ export default function Public() {
           </div>
         </div>
 
-        {/* Real vs Potencial */}
-        <SectionTitle sub="Comparación entre el resultado real y el potencial operando con disciplina perfecta.">Sistema real vs potencial</SectionTitle>
+        {/* Plan exacto vs resto (en R) */}
+        <SectionTitle sub="Resultado en R de los trades con el plan ejecutado al 100% contra el resto.">Plan exacto vs resto</SectionTitle>
         <div className="pub-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderRadius: 16, overflow: 'hidden', border: '1px solid #1E2A3A', marginBottom: 6 }}>
           <div style={{ padding: '24px 28px', background: 'linear-gradient(135deg, #0D1B2E, #111827)' }}>
-            <div style={{ fontSize: 9.5, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 8, fontWeight: 600 }}>Resultado real</div>
-            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 40, color: g.pnl >= 0 ? '#22C55E' : '#EF4444', lineHeight: 1, marginBottom: 6 }}>{g.pnl >= 0 ? '+' : ''}{g.pnl.toFixed(2)}%</div>
-            <div style={{ fontSize: 11.5, color: '#4A6080' }}>{g.n} operaciones · {violated.length} fuera de plan</div>
+            <div style={{ fontSize: 9.5, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 8, fontWeight: 600 }}>Todos los trades</div>
+            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 40, color: split.all.rSum >= 0 ? '#22C55E' : '#EF4444', lineHeight: 1, marginBottom: 6 }}>{fmtR(split.all.rSum)}</div>
+            <div style={{ fontSize: 11.5, color: '#4A6080' }}>{split.all.n} operaciones · expectativa {fmtR(split.all.avgR, 2)} por trade</div>
           </div>
           <div style={{ padding: '24px 28px', background: 'linear-gradient(135deg, #0F2040, #1A3060)', borderLeft: '1px solid #1E3A5F' }}>
-            <div style={{ fontSize: 9.5, color: 'rgba(96,165,250,.6)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 8, fontWeight: 600 }}>Potencial del sistema ✦</div>
-            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 40, color: '#E2E8F0', lineHeight: 1, marginBottom: 6 }}>{potentialPnl >= 0 ? '+' : ''}{potentialPnl.toFixed(2)}%</div>
-            <div style={{ fontSize: 11.5, color: 'rgba(96,165,250,.5)' }}>Solo con plan 100% respetado</div>
+            <div style={{ fontSize: 9.5, color: 'rgba(96,165,250,.6)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 8, fontWeight: 600 }}>Solo plan exacto ✦</div>
+            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 40, color: '#E2E8F0', lineHeight: 1, marginBottom: 6 }}>{fmtR(split.exact.rSum)}</div>
+            <div style={{ fontSize: 11.5, color: 'rgba(96,165,250,.5)' }}>{split.exact.n} trades · expectativa {fmtR(split.exact.avgR, 2)} · WR {split.exact.wr !== null ? split.exact.wr + '%' : '—'}</div>
           </div>
           <div style={{ gridColumn: '1/-1', background: '#1A1400', borderTop: '1px solid #92400E', padding: '14px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
             <div>
-              <div style={{ fontSize: 12, color: '#F59E0B', fontWeight: 500 }}>Brecha por indisciplina — {violated.length} trades fuera de plan</div>
-              <div style={{ fontSize: 10.5, color: '#92400E', marginTop: 2 }}>Cada trade fuera de plan tiene un costo estadístico comprobable.</div>
+              <div style={{ fontSize: 12, color: '#F59E0B', fontWeight: 500 }}>Resto de los trades — {split.rest.n} fuera del plan exacto · expectativa {fmtR(split.rest.avgR, 2)}</div>
+              <div style={{ fontSize: 10.5, color: '#92400E', marginTop: 2 }}>El plan de los trades históricos se calificó a mano después de cada operación; los trades nuevos lo derivan de un checklist previo al trade.</div>
             </div>
-            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: '#F59E0B' }}>{parseFloat((potentialPnl - g.pnl).toFixed(2)) >= 0 ? '+' : ''}{parseFloat((potentialPnl - g.pnl).toFixed(2))}%</div>
+            <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 26, color: '#F59E0B' }}>{fmtR(split.rest.rSum)}</div>
           </div>
         </div>
 

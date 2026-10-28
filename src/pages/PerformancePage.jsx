@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { calcMetrics, isQuality, calcStreaks, calcSharpe, calcSortino, calcCalmar, calcExpectancy, calcConsistency, calcAUM, buildEquityCurve, pnlSinceLastWD, pnlTotal, calcDynamicGoals } from '../lib/metrics'
+import { calcMetrics, isQuality, calcExecutionSplit, fmtR, calcStreaks, calcSharpe, calcSortino, calcCalmar, calcExpectancy, calcConsistency, calcAUM, buildEquityCurve, calcMaxDD, pnlSinceLastWD, pnlTotal, calcDynamicGoals } from '../lib/metrics'
 
 const tip = { background: '#1A2235', border: '1px solid #2A3A52', borderRadius: 8, fontSize: 11, color: '#E2E8F0' }
 
@@ -15,9 +16,13 @@ export default function PerformancePage({ ctx }) {
   const exp = calcExpectancy(trades)
   const cons = calcConsistency(trades)
   const aum = calcAUM(accounts, trades, withdrawals)
-  const equityData = buildEquityCurve(trades)
-  const violated = trades.filter(e => !isQuality(e))
-  const potentialPnl = parseFloat((g.pnl - violated.reduce((s, e) => s + (e.r_pnl || 0), 0)).toFixed(2))
+  const [eqAcc, setEqAcc] = useState('all')
+  const [eqUnit, setEqUnit] = useState('R')
+  const eqTrades = eqAcc === 'all' ? trades : trades.filter(t => String(t.cid) === String(eqAcc))
+  const equityData = buildEquityCurve(eqTrades, eqUnit)
+  const eqSuffix = eqUnit === 'R' ? 'R' : '%'
+  const eqDD = calcMaxDD(eqTrades, eqUnit)
+  const split = calcExecutionSplit(trades)
 
   return (
     <div>
@@ -66,23 +71,24 @@ export default function PerformancePage({ ctx }) {
         <div className="kpi"><div className="kl">Calmar ratio</div><div className={`kv ${calmar >= 1.5 ? 'pos' : calmar < 0.8 ? 'neg' : ''}`}>{calmar !== null ? calmar : '—'}</div><div className="ks">{calmar !== null ? calmar >= 2 ? 'Excelente' : calmar >= 1 ? 'Sólido' : 'Bajo' : 'P&L ÷ max DD'}</div></div>
       </div>
 
-      {/* Real vs Potential */}
+      {/* Plan exacto vs resto (en R) */}
       <div className="rvp-grid" style={{ marginBottom: 12 }}>
         <div className="rvp-real">
-          <div className="rvp-label" style={{ color: 'var(--text3)' }}>Resultado real</div>
-          <div className="rvp-val" style={{ color: g.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{g.pnl >= 0 ? '+' : ''}{g.pnl.toFixed(2)}%</div>
-          <div className="rvp-sub">{g.n} trades · {violated.length} fuera de plan</div>
+          <div className="rvp-label" style={{ color: 'var(--text3)' }}>Todos los trades</div>
+          <div className="rvp-val" style={{ color: split.all.rSum >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtR(split.all.rSum)}</div>
+          <div className="rvp-sub">{split.all.n} trades · expectativa {fmtR(split.all.avgR, 2)}</div>
         </div>
         <div className="rvp-potential">
-          <div className="rvp-label" style={{ color: 'var(--accent2)' }}>Potencial del sistema ✦</div>
-          <div className="rvp-val" style={{ color: 'var(--text)' }}>{potentialPnl >= 0 ? '+' : ''}{potentialPnl.toFixed(2)}%</div>
-          <div className="rvp-sub">Solo trades disciplinados</div>
+          <div className="rvp-label" style={{ color: 'var(--accent2)' }}>Solo plan exacto ✦</div>
+          <div className="rvp-val" style={{ color: 'var(--text)' }}>{fmtR(split.exact.rSum)}</div>
+          <div className="rvp-sub">{split.exact.n} trades · expectativa {fmtR(split.exact.avgR, 2)} · WR {split.exact.wr !== null ? split.exact.wr + '%' : '—'}</div>
         </div>
         <div className="rvp-gap">
-          <span style={{ fontSize: 12.5, color: 'var(--amber)', fontWeight: 500 }}>Brecha por indisciplina ({violated.length} trades)</span>
-          <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: 'var(--amber)' }}>{parseFloat((potentialPnl - g.pnl).toFixed(2)) >= 0 ? '+' : ''}{parseFloat((potentialPnl - g.pnl).toFixed(2))}%</span>
+          <span style={{ fontSize: 12.5, color: 'var(--amber)', fontWeight: 500 }}>Resto de los trades ({split.rest.n}) · expectativa {fmtR(split.rest.avgR, 2)}</span>
+          <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: 'var(--amber)' }}>{fmtR(split.rest.rSum)}</span>
         </div>
       </div>
+      <div style={{ fontSize: 11, color: 'var(--text3)', margin: '-6px 0 14px' }}>El plan de los trades históricos se calificó a mano después de cada operación; los trades nuevos lo derivan de un checklist previo al trade.</div>
 
       {/* Streaks + Consistency */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
@@ -130,7 +136,15 @@ export default function PerformancePage({ ctx }) {
 
       {/* Equity curve con área */}
       <div className="card" style={{ marginBottom: 12 }}>
-        <div className="card-title">Equity curve — P&L acumulado global</div>
+        <div className="card-title">Equity curve — {eqAcc === 'all' ? 'suma de todas las cuentas' : 'cuenta seleccionada'} ({eqUnit === 'R' ? 'en R' : 'en % de cuenta'})</div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+          <select value={eqAcc} onChange={e => setEqAcc(e.target.value)} style={{ background: 'var(--bg3)', color: 'var(--text)', border: '1px solid var(--border2)', borderRadius: 8, padding: '6px 10px', fontSize: 12 }}>
+            <option value="all">Todas las cuentas (suma)</option>
+            {accounts.filter(a => trades.some(t => String(t.cid) === String(a.id))).map(a => <option key={a.id} value={String(a.id)}>{a.nombre} · {a.type === 'funded' ? 'fondeada' : 'challenge'} · {a.status}</option>)}
+          </select>
+          <button className="btn btn-sm" onClick={() => setEqUnit(eqUnit === 'R' ? 'pct' : 'R')}>Ver en {eqUnit === 'R' ? '%' : 'R'}</button>
+          <span style={{ fontSize: 11.5, color: 'var(--text3)' }}>Drawdown máx. {eqAcc === 'all' ? '(peor cuenta)' : ''}: {eqDD}{eqSuffix}</span>
+        </div>
         <ResponsiveContainer width="100%" height={280}>
           <AreaChart data={equityData}>
             <defs>
@@ -141,8 +155,8 @@ export default function PerformancePage({ ctx }) {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)" />
             <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-            <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + '%'} />
-            <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'P&L acum.']} />
+            <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + eqSuffix} />
+            <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + eqSuffix, 'Acumulado']} />
             <Area type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2} fill="url(#pnlGradPerf)" dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#111827', strokeWidth: 2 }} />
           </AreaChart>
         </ResponsiveContainer>
