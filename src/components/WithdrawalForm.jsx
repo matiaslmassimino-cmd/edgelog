@@ -55,9 +55,9 @@ export default function WithdrawalForm({ ctx, defaultCid = '' }) {
       {row && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, margin: '4px 0 12px' }}>
           {[
-            ['Ganancia bruta', money(row.gross)],
-            [`Tu parte (${row.split}%)`, money(row.miParte)],
-            ['Ya cobrado', money(row.cobrado)],
+            ['Ciclo actual (bruto)', money(row.ciclo)],
+            [`Tu parte (${row.split}%)`, money(Math.max(0, row.ciclo) * row.split / 100)],
+            ['Ya cobrado (total)', money(row.cobrado)],
             ['Pendiente', money(row.pendiente)],
           ].map(([l, v]) => (
             <div key={l} style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>

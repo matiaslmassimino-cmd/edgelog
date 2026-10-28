@@ -57,7 +57,7 @@ export default function FondeadasPage({ ctx }) {
         <div className="kpi dark"><div className="kl">Cobrado en total</div><div className="kv" style={{ color: 'var(--gold)' }}>{money(L.cobrado)}</div><div className="ks">{L.nWd} retiro{L.nWd !== 1 ? 's' : ''} · {(L.capital ? L.cobrado / L.capital * 100 : 0).toFixed(2)}% del capital</div></div>
         <div className="kpi"><div className="kl">Pendiente por cobrar</div><div className="kv" style={{ color: L.pendiente > 0 ? 'var(--accent2)' : 'var(--text3)' }}>{money(L.pendiente)}</div><div className="ks">tu parte − lo ya cobrado</div></div>
         <div className="kpi"><div className="kl">Ganancia bruta generada</div><div className={`kv ${L.gross >= 0 ? 'pos' : 'neg'}`}>{money(L.gross)}</div><div className="ks">antes del split · {(L.capital ? L.gross / L.capital * 100 : 0).toFixed(2)}% sobre {money(L.capital)}</div></div>
-        <div className="kpi"><div className="kl">Tu parte (según split)</div><div className="kv">{money(L.miParte)}</div><div className="ks">cobrado + pendiente ≈ {money(L.cobrado + L.pendiente)}</div></div>
+        <div className="kpi"><div className="kl">Ciclo actual (bruto)</div><div className={`kv ${L.ciclo >= 0 ? 'pos' : 'neg'}`}>{money(L.ciclo)}</div><div className="ks">resultado desde el último retiro de cada cuenta</div></div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16, alignItems: 'start' }}>
@@ -65,7 +65,7 @@ export default function FondeadasPage({ ctx }) {
         <div className="card">
           <div className="card-title">Estado por cuenta</div>
           <table style={{ width: '100%', fontSize: 12.5 }}>
-            <thead><tr style={{ color: 'var(--text3)', textAlign: 'right' }}><th style={{ textAlign: 'left' }}>Cuenta</th><th>Bruta</th><th>Tu parte</th><th>Cobrado</th><th>Pendiente</th></tr></thead>
+            <thead><tr style={{ color: 'var(--text3)', textAlign: 'right' }}><th style={{ textAlign: 'left' }}>Cuenta</th><th>Bruta total</th><th>Ciclo actual</th><th>Cobrado</th><th>Pendiente</th></tr></thead>
             <tbody>
               {L.rows.map(r => (
                 <tr key={r.a.id} style={{ textAlign: 'right' }}>
@@ -74,7 +74,7 @@ export default function FondeadasPage({ ctx }) {
                     <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{money(r.cap)} · {r.a.firma} · split {r.a.split || '80/20'} · {r.n} trades</div>
                   </td>
                   <td style={{ color: r.gross >= 0 ? 'var(--green)' : 'var(--red)' }}>{money(r.gross)}</td>
-                  <td>{money(r.miParte)}</td>
+                  <td style={{ color: r.ciclo >= 0 ? 'var(--text)' : 'var(--red)' }}>{money(r.ciclo)} <span style={{ fontSize: 10, color: 'var(--text3)' }}>({r.cicloPct >= 0 ? '+' : ''}{r.cicloPct.toFixed(2)}%)</span></td>
                   <td>{money(r.cobrado)}</td>
                   <td style={{ color: 'var(--gold)', fontWeight: 600 }}>{money(r.pendiente)}</td>
                 </tr>
@@ -82,7 +82,7 @@ export default function FondeadasPage({ ctx }) {
             </tbody>
           </table>
           <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 10, lineHeight: 1.6 }}>
-            Pendiente = ganancia bruta × tu split − lo que ya cobraste. Si una firma te paga distinto (reglas de consistencia, comisiones), vas a ver la diferencia acá.
+            Cada retiro reinicia la cuenta en su capital inicial (así lo hace la firma): el ciclo actual es lo operado desde el último retiro. Pendiente = ciclo actual × tu split, si es positivo. Las pérdidas posteriores a un payout no tocan lo que ya cobraste.
           </div>
         </div>
       </div>
