@@ -14,10 +14,10 @@ export default function FondeadasPage({ ctx }) {
   // ── Totales globales de retiros ──
   const allWDs = funded.flatMap(a => (withdrawals[String(a.id)] || []).map(w => ({ ...w, accNombre: a.nombre })))
   const totalRetiros = allWDs.reduce((s, w) => s + (w.usd || 0), 0)
-  const totalRetirosPct = funded.reduce((s, a) => {
-    const wds = withdrawals[String(a.id)] || []
-    return s + wds.reduce((s2, w) => s2 + (w.pct || 0), 0)
-  }, 0)
+  // % retirado sobre el capital: dólares retirados / capital de las cuentas fondeadas.
+  // (Antes se sumaba el campo "%" de cada retiro de cuentas de distinto tamaño: no tenía significado.)
+  const capitalFondeado = funded.reduce((s, a) => s + (a.capital || 0), 0)
+  const totalRetirosPct = capitalFondeado > 0 ? totalRetiros / capitalFondeado * 100 : 0
   const allWDsSorted = [...allWDs].sort((a, b) => {
     const da = a.fecha?.split('/').reverse().join('-') || ''
     const db = b.fecha?.split('/').reverse().join('-') || ''
@@ -49,7 +49,7 @@ export default function FondeadasPage({ ctx }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
           {[
             { l: 'Total retirado', v: '$' + totalRetiros.toLocaleString('es-AR', { minimumFractionDigits: 0 }), s: `${allWDs.length} pago${allWDs.length !== 1 ? 's' : ''}`, c: 'var(--gold)', big: true },
-            { l: 'En % acumulado', v: '+' + totalRetirosPct.toFixed(2) + '%', s: 'sobre capital gestionado', c: 'var(--green)' },
+            { l: 'Retirado sobre capital', v: totalRetirosPct.toFixed(2) + '%', s: `$${totalRetiros.toLocaleString('es-AR')} sobre $${capitalFondeado.toLocaleString('es-AR')}`, c: 'var(--green)' },
             { l: 'Pendiente por cobrar', v: '$' + pendientePorCobrar.toFixed(0), s: 'ciclos activos (mi parte)', c: pendientePorCobrar > 0 ? 'var(--accent2)' : 'var(--text3)' },
             { l: 'Cuentas fondeadas', v: funded.length, s: `${funded.filter(a => a.status === 'active').length} activas`, c: 'var(--text)' },
           ].map(({ l, v, s, c, big }) => (
