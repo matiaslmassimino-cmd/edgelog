@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
-import { groupByPeriod, periodMetrics, keyLabel, parseFecha, calcMetrics, isQuality, isClosed, calcUnifiedReturn } from '../lib/metrics'
+import { groupByPeriod, periodMetrics, keyLabel, parseFecha, calcMetrics, isQuality, isClosed, calcUnifiedReturn, calcFundedGrowth } from '../lib/metrics'
 
 const tip = { background: '#1A2235', border: '1px solid #2A3A52', borderRadius: 8, fontSize: 11, color: '#E2E8F0' }
 
@@ -180,6 +180,49 @@ export default function RendimientoPage({ ctx }) {
               <div style={{ fontSize: 11.5, color: 'var(--text2)', lineHeight: 1.6 }}>
                 Qué habrías ganado si los {u.setups} setups en fondeadas se hubieran operado una vez sobre los ${u.base.toLocaleString('es-AR')} juntos, con el mismo % de riesgo que usaste y sin compuesto. Es hipotético: no considera los límites de la firma ni que más tamaño implica más riesgo en dólares. La diferencia con lo real es capital que no estuvo operando.
               </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Crecimiento del capital fondeado en el tiempo */}
+      {selectedAcc === 'all' && (() => {
+        const g = calcFundedGrowth(trades, accounts)
+        if (!g || g.steps.length < 1) return null
+        return (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">Crecimiento del capital fondeado</div>
+            <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', marginBottom: 12, fontSize: 12, color: 'var(--text2)' }}>
+              <span>Capital promedio operado: <b style={{ color: 'var(--text)' }}>${g.avgCap.toLocaleString('es-AR')}</b></span>
+              <span>Resultado: <b style={{ color: g.usd >= 0 ? 'var(--green)' : 'var(--red)' }}>{g.usd >= 0 ? '+' : ''}${g.usd.toLocaleString('es-AR')}</b> en {g.days} días</span>
+              <span>Rentabilidad sobre capital promedio: <b style={{ color: g.retAvg >= 0 ? 'var(--green)' : 'var(--red)' }}>{g.retAvg >= 0 ? '+' : ''}{g.retAvg}%</b></span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div>
+                <div style={{ fontSize: 10.5, color: 'var(--text3)', marginBottom: 4 }}>CAPITAL EN CUENTAS FONDEADAS</div>
+                <ResponsiveContainer width="100%" height={170}>
+                  <AreaChart data={g.points}>
+                    <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => '$' + v / 1000 + 'k'} />
+                    <Tooltip contentStyle={tip} formatter={v => ['$' + v.toLocaleString('es-AR'), 'Capital']} labelStyle={{ color: '#EAB308' }} />
+                    <Area type="stepAfter" dataKey="capital" stroke="#EAB308" strokeWidth={2} fill="#EAB308" fillOpacity={0.15} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <div>
+                <div style={{ fontSize: 10.5, color: 'var(--text3)', marginBottom: 4 }}>RESULTADO ACUMULADO (USD)</div>
+                <ResponsiveContainer width="100%" height={170}>
+                  <AreaChart data={g.points}>
+                    <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => '$' + v} />
+                    <Tooltip contentStyle={tip} formatter={v => ['$' + v.toLocaleString('es-AR'), 'Resultado']} labelStyle={{ color: '#22C55E' }} />
+                    <Area type="monotone" dataKey="usd" stroke="#22C55E" strokeWidth={2} fill="#22C55E" fillOpacity={0.12} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 10, lineHeight: 1.6 }}>
+              Cada cuenta entra el día de su primer trade: {g.steps.map(x => `${x.nombre} ($${x.cap.toLocaleString('es-AR')}) el ${x.fecha}`).join(' · ')}.
             </div>
           </div>
         )

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { fetchPublicDataBySlug } from '../lib/sync'
-import { rOf, calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcExpectancyCI, calcExecutionSplit, fmtR, calcMaxDD, calcFundedSummary, calcFundedCurve, calcEvaluationStats, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, calcSetups, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
+import { rOf, calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcExpectancyCI, calcExecutionSplit, fmtR, calcMaxDD, calcFundedSummary, calcFundedCurve, calcFundedGrowth, calcEvaluationStats, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, calcSetups, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 
 const tip = { background: '#0F1828', border: '1px solid #1E3A5F', borderRadius: 10, fontSize: 11, color: '#E2E8F0', padding: '10px 14px' }
@@ -184,7 +184,7 @@ function PeriodExplorer({ trades }) {
         <span style={{ textAlign: 'right' }}>Trades</span>
         <span style={{ textAlign: 'right' }}>Win rate</span>
         <span style={{ textAlign: 'right' }}>WR ✦</span>
-        <span style={{ textAlign: 'right' }}>P&L</span>
+        <span style={{ textAlign: 'right' }}>R</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {[...keys].reverse().map(k => {
@@ -269,6 +269,7 @@ export default function Public() {
   const equityData = buildEquityCurve(trades, 'R')
   const funded = calcFundedSummary(trades, accounts)
   const fundedCurve = calcFundedCurve(funded.trades, accounts)
+  const growth = calcFundedGrowth(trades, accounts)
   const evals = calcEvaluationStats(accounts)
   const ddR = calcMaxDD(trades, 'R'), ddPct = calcMaxDD(trades)
   const split = calcExecutionSplit(trades)
@@ -423,6 +424,19 @@ export default function Public() {
                 <Area type="monotone" dataKey="pnl" stroke="#FBBF24" strokeWidth={2.2} fill="url(#pnlGradFund)" dot={false} />
               </AreaChart>
             </ResponsiveContainer>
+            {growth && growth.steps.length > 1 && (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 10, color: '#92400E', letterSpacing: '.1em', textTransform: 'uppercase', marginBottom: 4 }}>Crecimiento del capital fondeado · rentabilidad sobre capital promedio {growth.retAvg >= 0 ? '+' : ''}{growth.retAvg}% (${growth.avgCap.toLocaleString('es-AR')} promedio)</div>
+                <ResponsiveContainer width="100%" height={110}>
+                  <AreaChart data={growth.points}>
+                    <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => '$' + v / 1000 + 'k'} />
+                    <Tooltip contentStyle={tip} formatter={v => ['$' + v.toLocaleString('es-AR'), 'Capital']} labelStyle={{ color: '#FBBF24' }} />
+                    <Area type="stepAfter" dataKey="capital" stroke="#FBBF24" strokeWidth={2} fill="#FBBF24" fillOpacity={0.15} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
             <div style={{ fontSize: 10.5, color: '#92400E', marginTop: 8 }}>
               Evaluaciones: {evals.passed} fases aprobadas · {evals.lost} perdidas · {evals.running} en curso{evals.rate !== null ? ` (${evals.rate}% de aprobación)` : ''}.
             </div>
