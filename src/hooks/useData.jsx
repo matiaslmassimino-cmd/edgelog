@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   fetchTrades, fetchAccounts, fetchWithdrawals, fetchRules, fetchProfile,
   saveTrade, saveAccount, deleteAccount, updateAccountStatus,
-  saveWithdrawal, deleteWithdrawal, saveRule, deleteRule, saveProfile,
+  saveWithdrawal, deleteWithdrawal, updateWithdrawal, saveRule, deleteRule, saveProfile,
   bulkMigrate, bulkImportCSV, updateTrade, deleteTrade, exportToCSV
 } from '../lib/sync'
 
@@ -38,6 +38,7 @@ export default function useData(userId) {
   const setAccStatus = async (id, status) => { await updateAccountStatus(id, status); await reload() }
   const addWithdrawal = async (accId, wd) => { await saveWithdrawal(userId, accId, wd); await reload() }
   const removeWithdrawal = async (id) => { await deleteWithdrawal(id); await reload() }
+  const editWithdrawal = async (id, updates) => { await updateWithdrawal(id, updates); await reload() }
   const addRule = async (rule) => { await saveRule(userId, rule); await reload() }
   const removeRule = async (id) => { await deleteRule(id); await reload() }
   const updateProfile = async (p) => { await saveProfile(userId, p); await reload() }
@@ -55,7 +56,7 @@ export default function useData(userId) {
     loading, dataExists, reload,
     addTrade, removeTrade, editTrade,
     addAccount, removeAccount, setAccStatus,
-    addWithdrawal, removeWithdrawal,
+    addWithdrawal, removeWithdrawal, editWithdrawal,
     addRule, removeRule,
     updateProfile, importCSV, exportCSV
   }

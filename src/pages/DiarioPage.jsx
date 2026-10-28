@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { calcDayStatus, calcRiskBucket, calcPlanBreakdown, fmtR } from '../lib/metrics'
+import WithdrawalForm from '../components/WithdrawalForm'
+import { isRealFecha, isFutureFecha, calcDayStatus, calcRiskBucket, calcPlanBreakdown, fmtR } from '../lib/metrics'
 
 const RISK_OPTS = ['0.5%', '1%', '1.5%', '2%', '2.5%', '3%']
 const EMO_OPTS = ['Calmo 😌', 'Ansioso 😰', 'FOMO 😬', 'Revenge 😤']
@@ -48,7 +49,6 @@ const today = () => new Date().toLocaleDateString('es-AR', { day: '2-digit', mon
 const EMPTY = { fecha: today(), cids: [], risks: {}, par: 'EURUSD', tmp: '2m', rr: '', rrReal: '', nota: '', resultado: '', direccion: '', parciales: 'No — full target', plan: '', chkEst: false, chkConf: false, chkLiq: false, emo: '', sob: 'No' }
 // Riesgo por defecto de una cuenta según tu regla (fondeada / challenge)
 const defRisk = (acc, profile) => String(acc?.type === 'funded' ? (parseFloat(profile?.risk_funded) || 1) : (parseFloat(profile?.risk_challenge) || 2))
-const EMPTY_WD = { fecha: today(), cid: '', usd: '', pct: '', nota: '' }
 
 
 // Alertas de disciplina en vivo, calculadas con tus propios trades.
@@ -94,10 +94,9 @@ function DisciplinePanel({ f, trades, accounts, profile }) {
 }
 
 export default function DiarioPage({ ctx }) {
-  const { accounts, addTrade, addWithdrawal, toast } = ctx
+  const { accounts, addTrade, toast } = ctx
   const [mode, setMode] = useState('trade')
   const [f, setF] = useState(EMPTY)
-  const [wd, setWd] = useState(EMPTY_WD)
   const [saving, setSaving] = useState(false)
 
   const active = accounts.filter(a => !['completed', 'closed', 'perdida'].includes(a.status))
@@ -120,6 +119,9 @@ export default function DiarioPage({ ctx }) {
   async function handleSaveTrade() {
     if (!f.cids.length) { toast('Seleccioná al menos una cuenta', 'err'); return }
     if (!f.resultado) { toast('Seleccioná el resultado', 'err'); return }
+    if (!isRealFecha(f.fecha)) { toast('La fecha no es válida (DD/MM/AAAA)', 'err'); return }
+    if (isFutureFecha(f.fecha)) { toast('La fecha es futura', 'err'); return }
+    if (f.resultado === 'Win' && !(parseFloat(f.rrReal) > 0 || parseFloat(f.rr) > 0)) { toast('Un trade ganador necesita R:R real (o al menos el objetivo)', 'err'); return }
     if (f.cids.some(c => !parseFloat(f.risks[c]))) { toast('Elegí el riesgo de cada cuenta', 'err'); return }
     setSaving(true)
     const rrObj = parseFloat(f.rr) || 0
@@ -149,21 +151,6 @@ export default function DiarioPage({ ctx }) {
       }
       toast(f.cids.length > 1 ? `✓ Setup guardado en ${f.cids.length} cuentas` : '✓ Entrada guardada', 'ok')
       setF({ ...EMPTY, fecha: f.fecha, cids: f.cids, risks: f.risks })
-    } catch (e) { toast('Error: ' + e.message, 'err') }
-    setSaving(false)
-  }
-
-  async function handleSaveWD() {
-    if (!wd.cid) { toast('Seleccioná una cuenta fondeada', 'err'); return }
-    const acc = funded.find(a => String(a.id) === wd.cid)
-    const cap = acc?.capital || 10000
-    const usd = parseFloat(wd.usd) || (parseFloat(wd.pct) / 100 * cap)
-    const pct = parseFloat(wd.pct) || (parseFloat(wd.usd) / cap * 100)
-    setSaving(true)
-    try {
-      await addWithdrawal(wd.cid, { id: Date.now(), fecha: wd.fecha, usd, pct, nota: wd.nota })
-      toast('✓ Retiro registrado', 'ok')
-      setWd({ ...EMPTY_WD, fecha: wd.fecha })
     } catch (e) { toast('Error: ' + e.message, 'err') }
     setSaving(false)
   }
@@ -267,34 +254,8 @@ export default function DiarioPage({ ctx }) {
       )}
 
       {mode === 'wd' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <div className="card">
-            <div className="card-title">Datos del retiro</div>
-            <div className="g2">
-              <div className="fg"><label className="fl">Fecha</label><input className="fi" value={wd.fecha} onChange={e => setWd(p => ({ ...p, fecha: e.target.value }))} /></div>
-              <div className="fg"><label className="fl">Cuenta fondeada</label>
-                <select className="fi" value={wd.cid} onChange={e => setWd(p => ({ ...p, cid: e.target.value }))}>
-                  <option value="">Seleccioná cuenta</option>
-                  {funded.map(a => <option key={a.id} value={a.id}>{a.nombre} (${(a.capital || 0).toLocaleString()})</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="g2">
-              <div className="fg"><label className="fl">Monto ($)</label><input className="fi" type="number" value={wd.usd} onChange={e => setWd(p => ({ ...p, usd: e.target.value }))} placeholder="800" /></div>
-              <div className="fg"><label className="fl">Equivalente (%)</label><input className="fi" type="number" value={wd.pct} onChange={e => setWd(p => ({ ...p, pct: e.target.value }))} placeholder="8.0" /></div>
-            </div>
-            <div className="fg"><label className="fl">Nota</label><input className="fi" value={wd.nota} onChange={e => setWd(p => ({ ...p, nota: e.target.value }))} placeholder="Payout mensual..." /></div>
-            <button className="btn btn-gold btn-full" onClick={handleSaveWD} disabled={saving}>{saving ? 'Guardando...' : 'Guardar retiro'}</button>
-          </div>
-          <div className="card">
-            <div className="card-title">¿Qué pasa al retirar?</div>
-            <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 2 }}>
-              <div>◈ El P&L desde último retiro se resetea a 0%</div>
-              <div>∿ El P&L histórico sigue acumulando</div>
-              <div>$ El retiro queda en Fondeadas con fecha y monto</div>
-              <div>⚡ Los KPIs se actualizan automáticamente</div>
-            </div>
-          </div>
+        <div style={{ maxWidth: 640 }}>
+          <WithdrawalForm ctx={ctx} />
         </div>
       )}
     </div>
