@@ -1,5 +1,5 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { calcMetrics, isQuality, calcSharpe, calcSortino, calcCalmar, calcEdgeRatio, calcDynamicGoals, calcAUM, buildEquityCurve, calcDirectionStats } from '../lib/metrics'
+import { calcMetrics, isQuality, calcExecutionSplit, fmtR, calcSharpe, calcSortino, calcCalmar, calcEdgeRatio, calcDynamicGoals, calcAUM, buildEquityCurve, calcDirectionStats } from '../lib/metrics'
 
 const tip = { background: '#1A2235', border: '1px solid #2A3A52', borderRadius: 8, fontSize: 11, color: '#E2E8F0' }
 
@@ -16,9 +16,7 @@ export default function TrackRecordPage({ ctx }) {
   const aum = calcAUM(accounts, trades, withdrawals)
   const equityData = buildEquityCurve(trades)
   const dir = calcDirectionStats(trades)
-  const violated = trades.filter(e => !isQuality(e))
-  const potentialPnl = parseFloat((g.pnl - violated.reduce((s, e) => s + (e.r_pnl || 0), 0)).toFixed(2))
-  const gap = parseFloat((potentialPnl - g.pnl).toFixed(2))
+  const split = calcExecutionSplit(trades)
   const dates = trades.map(e => e.fecha).filter(Boolean).sort()
   const firstDate = dates[0] ? new Date(dates[0].split('/').reverse().join('-')) : null
   const spanDays = firstDate ? Math.round((new Date() - firstDate) / 86400000) : 0
@@ -65,24 +63,25 @@ export default function TrackRecordPage({ ctx }) {
         </div>
       </div>
 
-      {/* Real vs Potential */}
-      <div className="quality-sep">Resultado real vs potencial del sistema</div>
-      <div className="rvp-grid" style={{ marginBottom: 18 }}>
+      {/* Plan exacto vs resto (en R) */}
+      <div className="quality-sep">Plan exacto vs resto (en R)</div>
+      <div className="rvp-grid" style={{ marginBottom: 12 }}>
         <div className="rvp-real">
-          <div className="rvp-label" style={{ color: 'var(--text3)' }}>Resultado real obtenido</div>
-          <div className="rvp-val" style={{ color: g.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{g.pnl >= 0 ? '+' : ''}{g.pnl.toFixed(2)}%</div>
-          <div className="rvp-sub">{g.n} trades · {violated.length} fuera de plan</div>
+          <div className="rvp-label" style={{ color: 'var(--text3)' }}>Todos los trades</div>
+          <div className="rvp-val" style={{ color: split.all.rSum >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtR(split.all.rSum)}</div>
+          <div className="rvp-sub">{split.all.n} trades · expectativa {fmtR(split.all.avgR, 2)}</div>
         </div>
         <div className="rvp-potential">
-          <div className="rvp-label" style={{ color: 'var(--accent2)' }}>Potencial del sistema ✦</div>
-          <div className="rvp-val" style={{ color: 'var(--text)' }}>{potentialPnl >= 0 ? '+' : ''}{potentialPnl.toFixed(2)}%</div>
-          <div className="rvp-sub">Solo trades disciplinados</div>
+          <div className="rvp-label" style={{ color: 'var(--accent2)' }}>Solo plan exacto ✦</div>
+          <div className="rvp-val" style={{ color: 'var(--text)' }}>{fmtR(split.exact.rSum)}</div>
+          <div className="rvp-sub">{split.exact.n} trades · expectativa {fmtR(split.exact.avgR, 2)} · WR {split.exact.wr !== null ? split.exact.wr + '%' : '—'}</div>
         </div>
         <div className="rvp-gap">
-          <span style={{ fontSize: 12.5, color: 'var(--amber)', fontWeight: 500 }}>Brecha por indisciplina ({violated.length} trades fuera de plan)</span>
-          <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: 'var(--amber)' }}>{gap >= 0 ? '+' : ''}{gap.toFixed(2)}%</span>
+          <span style={{ fontSize: 12.5, color: 'var(--amber)', fontWeight: 500 }}>Resto de los trades ({split.rest.n}) · expectativa {fmtR(split.rest.avgR, 2)}</span>
+          <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: 'var(--amber)' }}>{fmtR(split.rest.rSum)}</span>
         </div>
       </div>
+      <div style={{ fontSize: 11, color: 'var(--text3)', margin: '-6px 0 14px' }}>El plan de los trades históricos se calificó a mano después de cada operación; los trades nuevos lo derivan de un checklist previo al trade.</div>
 
       {/* Executive summary */}
       <div className="quality-sep">Resumen ejecutivo</div>
