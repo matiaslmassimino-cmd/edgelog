@@ -45,7 +45,9 @@ function ChipGroup({ opts, value, onChange }) {
 }
 
 const today = () => new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-const EMPTY = { fecha: today(), cid: '', par: 'EURUSD', tmp: '2m', rr: '', rrReal: '', nota: '', risk: '', resultado: '', direccion: '', parciales: 'No — full target', plan: '', chkEst: false, chkConf: false, chkLiq: false, emo: '', sob: 'No' }
+const EMPTY = { fecha: today(), cids: [], risks: {}, par: 'EURUSD', tmp: '2m', rr: '', rrReal: '', nota: '', resultado: '', direccion: '', parciales: 'No — full target', plan: '', chkEst: false, chkConf: false, chkLiq: false, emo: '', sob: 'No' }
+// Riesgo por defecto de una cuenta según tu regla (fondeada / challenge)
+const defRisk = (acc, profile) => String(acc?.type === 'funded' ? (parseFloat(profile?.risk_funded) || 1) : (parseFloat(profile?.risk_challenge) || 2))
 const EMPTY_WD = { fecha: today(), cid: '', usd: '', pct: '', nota: '' }
 
 
@@ -55,18 +57,23 @@ function DisciplinePanel({ f, trades, accounts, profile }) {
   const day = calcDayStatus(trades, f.fecha)
   if (day.level !== 'ok') items.push({ level: day.level, text: day.msg })
   else items.push({ level: 'ok', text: `Hoy: ${day.n} trades · ${fmtR(day.rToday, 1)}.` })
-  const rp = parseFloat(f.risk) || 0
-  const acc = accounts.find(a => String(a.id) === String(f.cid))
   const fundedMax = parseFloat(profile?.risk_funded) || 1
   const chMax = parseFloat(profile?.risk_challenge) || 2
-  if (rp >= 2.5) {
-    const b = calcRiskBucket(trades, 2.5)
-    items.push({ level: 'stop', text: `Riesgo ${rp}%: en tus datos, los trades a 2.5% o más suman ${b.w} ganados y ${b.l} perdidos (${fmtR(b.avgR, 2)} por trade).` })
-  } else if (acc && acc.type === 'funded' && rp > fundedMax) {
-    items.push({ level: 'warn', text: `Cuenta fondeada: tu regla es ${fundedMax}% y estás poniendo ${rp}%.` })
-  } else if (acc && acc.type !== 'funded' && rp > chMax) {
-    items.push({ level: 'warn', text: `Challenge: tu regla es ${chMax}% y estás poniendo ${rp}%.` })
-  }
+  const nAcc = f.cids.length
+  if (nAcc > 1) items.push({ level: 'ok', text: `Mismo setup en ${nAcc} cuentas: se guarda como un solo setup (las filas ganan o pierden juntas).` })
+  f.cids.forEach(cid => {
+    const acc = accounts.find(a => String(a.id) === String(cid))
+    const rp = parseFloat(f.risks[cid]) || 0
+    if (!acc || !rp) return
+    if (rp >= 2.5) {
+      const b = calcRiskBucket(trades, 2.5)
+      items.push({ level: 'stop', text: `${acc.nombre}: riesgo ${rp}%. En tus datos, los trades a 2.5% o más suman ${b.w} ganados y ${b.l} perdidos (${fmtR(b.avgR, 2)} por trade).` })
+    } else if (acc.type === 'funded' && rp > fundedMax) {
+      items.push({ level: 'warn', text: `${acc.nombre} (fondeada): tu regla es ${fundedMax}% y estás poniendo ${rp}%.` })
+    } else if (acc.type !== 'funded' && rp > chMax) {
+      items.push({ level: 'warn', text: `${acc.nombre} (challenge): tu regla es ${chMax}% y estás poniendo ${rp}%.` })
+    }
+  })
   const chk = CHECKS.filter(c => f[c.key]).length
   if (chk < 3) {
     const pb = calcPlanBreakdown(trades).find(x => x.key === 'Parcialmente')
@@ -97,43 +104,51 @@ export default function DiarioPage({ ctx }) {
   const funded = active.filter(a => a.type === 'funded')
 
   function calcPreview() {
-    const acc = active.find(a => String(a.id) === f.cid)
-    if (!acc || !f.resultado || !f.risk) return null
-    const rp = parseFloat(f.risk) || 0
+    if (!f.cids.length || !f.resultado) return null
     const rrReal = parseFloat(f.rrReal) || parseFloat(f.rr) || 0
-    let rPnl = 0
-    if (f.resultado === 'Win' && rrReal > 0) rPnl = parseFloat((rp * rrReal).toFixed(4))
-    else if (f.resultado === 'Loss') rPnl = -rp
-    return { acc: acc.nombre, rPnl, rp, rrReal }
+    const rows = f.cids.map(cid => {
+      const acc = active.find(a => String(a.id) === String(cid))
+      const rp = parseFloat(f.risks[cid]) || 0
+      let rPnl = 0
+      if (f.resultado === 'Win' && rrReal > 0) rPnl = parseFloat((rp * rrReal).toFixed(4))
+      else if (f.resultado === 'Loss') rPnl = -rp
+      return { acc: acc?.nombre || cid, rPnl, rp, rrReal }
+    })
+    return rows
   }
 
   async function handleSaveTrade() {
-    if (!f.cid) { toast('Seleccioná una cuenta', 'err'); return }
+    if (!f.cids.length) { toast('Seleccioná al menos una cuenta', 'err'); return }
     if (!f.resultado) { toast('Seleccioná el resultado', 'err'); return }
-    if (!f.risk) { toast('Seleccioná el riesgo', 'err'); return }
+    if (f.cids.some(c => !parseFloat(f.risks[c]))) { toast('Elegí el riesgo de cada cuenta', 'err'); return }
     setSaving(true)
-    const acc = active.find(a => String(a.id) === f.cid)
-    const rp = parseFloat(f.risk) || 0
     const rrObj = parseFloat(f.rr) || 0
     const rrReal = parseFloat(f.rrReal) || rrObj
-    let rPnl = 0
-    if (f.resultado === 'Win' && rrReal > 0) rPnl = parseFloat((rp * rrReal).toFixed(4))
-    else if (f.resultado === 'Loss') rPnl = -rp
+    const base = Date.now()
+    const setupId = String(base)   // mismo setup en todas las cuentas seleccionadas
     try {
-      await addTrade({
-        id: Date.now(), fecha: f.fecha, cid: String(f.cid),
-        c_nombre: acc?.nombre || '', c_tipo: acc?.type || 'challenge', firma: acc?.firma || '',
-        opero: 'Tomé un trade', risk: f.risk, rp,
-        resultado: f.resultado, rr: rrObj, rr_real: rrReal,
-        parciales: f.parciales?.includes('Sí') ? 'Sí' : 'No',
-        direccion: f.direccion || '—', r_pnl: rPnl,
-        plan: planFromChecks(f),
-        chk_estructura: !!f.chkEst, chk_confirmacion: !!f.chkConf, chk_liquidez_fvg: !!f.chkLiq,
-        emo: f.emo?.split(' ')[0] || '—', sob: f.sob || '—',
-        par: f.par, tmp: f.tmp, nota: f.nota
-      })
-      toast('✓ Entrada guardada', 'ok')
-      setF({ ...EMPTY, fecha: f.fecha, cid: f.cid })
+      for (let i = 0; i < f.cids.length; i++) {
+        const cid = f.cids[i]
+        const acc = active.find(a => String(a.id) === String(cid))
+        const rp = parseFloat(f.risks[cid]) || 0
+        let rPnl = 0
+        if (f.resultado === 'Win' && rrReal > 0) rPnl = parseFloat((rp * rrReal).toFixed(4))
+        else if (f.resultado === 'Loss') rPnl = -rp
+        await addTrade({
+          id: base + i, setup_id: setupId, fecha: f.fecha, cid: String(cid),
+          c_nombre: acc?.nombre || '', c_tipo: acc?.type || 'challenge', firma: acc?.firma || '',
+          opero: 'Tomé un trade', risk: String(f.risks[cid]), rp,
+          resultado: f.resultado, rr: rrObj, rr_real: rrReal,
+          parciales: f.parciales?.includes('Sí') ? 'Sí' : 'No',
+          direccion: f.direccion || '—', r_pnl: rPnl,
+          plan: planFromChecks(f),
+          chk_estructura: !!f.chkEst, chk_confirmacion: !!f.chkConf, chk_liquidez_fvg: !!f.chkLiq,
+          emo: f.emo?.split(' ')[0] || '—', sob: f.sob || '—',
+          par: f.par, tmp: f.tmp, nota: f.nota
+        })
+      }
+      toast(f.cids.length > 1 ? `✓ Setup guardado en ${f.cids.length} cuentas` : '✓ Entrada guardada', 'ok')
+      setF({ ...EMPTY, fecha: f.fecha, cids: f.cids, risks: f.risks })
     } catch (e) { toast('Error: ' + e.message, 'err') }
     setSaving(false)
   }
@@ -176,11 +191,22 @@ export default function DiarioPage({ ctx }) {
               <div className="card-title">Datos del trade</div>
               <div className="g2">
                 <div className="fg"><label className="fl">Fecha</label><input className="fi" value={f.fecha} onChange={e => setF(p => ({ ...p, fecha: e.target.value }))} /></div>
-                <div className="fg"><label className="fl">Cuenta</label>
-                  <select className="fi" value={f.cid} onChange={e => setF(p => ({ ...p, cid: e.target.value }))}>
-                    <option value="">Seleccioná cuenta</option>
-                    {active.map(a => <option key={a.id} value={a.id}>{a.nombre} — {a.firma}</option>)}
-                  </select>
+              </div>
+              <div className="fg"><label className="fl">Cuentas donde tomaste este setup (podés elegir varias)</label>
+                <div className="chip-group">
+                  {active.map(a => {
+                    const on = f.cids.includes(String(a.id))
+                    return (
+                      <button key={a.id} className={`chip ${on ? (a.type === 'funded' ? 'active-amber' : 'active-blue') : ''}`}
+                        onClick={() => setF(p => {
+                          const id = String(a.id)
+                          if (p.cids.includes(id)) { const { [id]: _x, ...rest } = p.risks; return { ...p, cids: p.cids.filter(c => c !== id), risks: rest } }
+                          return { ...p, cids: [...p.cids, id], risks: { ...p.risks, [id]: p.risks[id] || defRisk(a, ctx.profile) } }
+                        })}>
+                        {on ? '✓ ' : ''}{a.nombre} · {a.type === 'funded' ? 'fondeada' : 'challenge'}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
               <div className="g2">
@@ -202,7 +228,18 @@ export default function DiarioPage({ ctx }) {
               <div className="card-title">Validaciones</div>
               <div className="fg"><label className="fl">Resultado</label><ChipGroup opts={RES_OPTS} value={f.resultado} onChange={v => setF(p => ({ ...p, resultado: v }))} /></div>
               <div className="fg"><label className="fl">Dirección</label><ChipGroup opts={DIR_OPTS} value={f.direccion} onChange={v => setF(p => ({ ...p, direccion: v }))} /></div>
-              <div className="fg"><label className="fl">Riesgo</label><ChipGroup opts={RISK_OPTS} value={f.risk} onChange={v => setF(p => ({ ...p, risk: v.replace('%', '') }))} /></div>
+              <div className="fg"><label className="fl">Riesgo por cuenta</label>
+                {f.cids.length === 0 && <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>Elegí primero las cuentas.</div>}
+                {f.cids.map(cid => {
+                  const a = active.find(x => String(x.id) === String(cid))
+                  return (
+                    <div key={cid} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12, color: 'var(--text2)', minWidth: 110 }}>{a?.nombre}</span>
+                      <ChipGroup opts={RISK_OPTS} value={String(f.risks[cid] || '') + (f.risks[cid] ? '%' : '')} onChange={v => setF(p => ({ ...p, risks: { ...p.risks, [cid]: v.replace('%', '') } }))} />
+                    </div>
+                  )
+                })}
+              </div>
               <div className="fg"><label className="fl">¿Parciales?</label><ChipGroup opts={PAR_OPTS} value={f.parciales} onChange={v => setF(p => ({ ...p, parciales: v }))} /></div>
               <div className="fg"><label className="fl">Checklist del setup (marcalo antes de ver el resultado)</label>
                 <div className="chip-group">
@@ -217,13 +254,13 @@ export default function DiarioPage({ ctx }) {
               <div className="fg"><label className="fl">Estado emocional</label><ChipGroup opts={EMO_OPTS} value={f.emo} onChange={v => setF(p => ({ ...p, emo: v }))} /></div>
               <div className="fg"><label className="fl">¿Sobreoperé?</label><ChipGroup opts={SOB_OPTS} value={f.sob} onChange={v => setF(p => ({ ...p, sob: v }))} /></div>
             </div>
-            {prev && (
-              <div className={`alert ${prev.rPnl >= 0 ? 'ok' : 'danger'}`} style={{ marginBottom: 10 }}>
-                {prev.acc} · {prev.rPnl >= 0 ? '+' : ''}{prev.rPnl.toFixed(2)}% · Riesgo: {prev.rp}% · R:{prev.rrReal}
+            {prev && prev.map(r => (
+              <div key={r.acc} className={`alert ${r.rPnl >= 0 ? 'ok' : 'danger'}`} style={{ marginBottom: 10 }}>
+                {r.acc} · {r.rPnl >= 0 ? '+' : ''}{r.rPnl.toFixed(2)}% · Riesgo: {r.rp}% · R:{r.rrReal}
               </div>
-            )}
+            ))}
             <button className="btn btn-main btn-full" onClick={handleSaveTrade} disabled={saving}>
-              {saving ? 'Guardando...' : 'Guardar entrada'}
+              {saving ? 'Guardando...' : f.cids.length > 1 ? `Guardar setup en ${f.cids.length} cuentas` : 'Guardar entrada'}
             </button>
           </div>
         </div>

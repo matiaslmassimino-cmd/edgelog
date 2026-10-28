@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { fetchPublicDataBySlug } from '../lib/sync'
-import { calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcExpectancyCI, calcExecutionSplit, fmtR, calcMaxDD, calcFundedSummary, calcFundedCurve, calcEvaluationStats, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
+import { calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcExpectancyCI, calcExecutionSplit, fmtR, calcMaxDD, calcFundedSummary, calcFundedCurve, calcEvaluationStats, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, calcSetups, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 
 const tip = { background: '#0F1828', border: '1px solid #1E3A5F', borderRadius: 10, fontSize: 11, color: '#E2E8F0', padding: '10px 14px' }
@@ -264,6 +264,7 @@ export default function Public() {
   const ci = calcExpectancyCI(trades)
   const cons = calcConsistency(trades)
   const streaks = calcStreaks(trades)
+  const nSetups = calcSetups(trades).length
   const aum = calcAUM(accounts, trades, {})
   const equityData = buildEquityCurve(trades, 'R')
   const funded = calcFundedSummary(trades, accounts)
@@ -346,7 +347,7 @@ export default function Public() {
               { label: 'Win rate', value: g.wr !== null ? g.wr + '%' : '—', sub: 'sin contar breakeven', color: g.wr >= 50 ? '#22C55E' : '#EF4444' },
               { label: 'WR plan exacto ✦', value: gQ.wr !== null ? gQ.wr + '%' : '—', sub: `${gQ.n} trades`, color: '#EAB308' },
               { label: 'Prof. factor (R)', value: g.pf !== null ? g.pf.toFixed(2) : '—', color: g.pf >= 1.5 ? '#22C55E' : '#F59E0B' },
-              { label: 'Trades', value: String(g.n), sub: `${g.w}W · ${g.l}L · ${g.be} BE`, color: '#E2E8F0' },
+              { label: 'Trades', value: String(g.n), sub: `${nSetups} setups · ${g.w}W · ${g.l}L`, color: '#E2E8F0' },
               { label: 'Capital fondeado', value: '$' + aum.funded.toLocaleString(), sub: `+ $${aum.challenge.toLocaleString()} en evaluación`, color: '#60A5FA' },
             ].map(({ label, value, sub, color, big }, i) => (
               <div key={label} className="pub-hero-stat" style={{ paddingRight: 28, marginRight: 28, borderRight: i < 6 ? '1px solid rgba(255,255,255,.07)' : 'none', marginBottom: 8 }}>
@@ -443,7 +444,7 @@ export default function Public() {
           <StatCard label="R:R Real Promedio" value={g.avgRR !== null ? '1:' + g.avgRR.toFixed(2) : '—'} color={g.avgRR >= 2 ? '#22C55E' : '#F59E0B'} sub="sobre trades ganadores" desc="Risk:Reward real promedio en operaciones exitosas. Un R:R de 1:2 significa que gana el doble de lo que arriesga." />
           <StatCard label="Expectancy por Trade" value={exp !== null ? (exp > 0 ? '+' : '') + exp + 'R' : '—'} color={exp > 0 ? '#22C55E' : '#EF4444'} sub={exp > 0 ? 'Edge positivo' : 'Sin edge'} desc="Ganancia o pérdida promedio esperada por operación. Si es positiva, el sistema tiene ventaja estadística y es rentable a largo plazo." />
           <StatCard label="Drawdown máximo" value={ddR + 'R'} color={ddPct >= 8 ? '#EF4444' : '#F59E0B'} sub={`${ddPct}% de cuenta · peor cuenta`} desc="Mayor caída desde un máximo, medida cuenta por cuenta sobre el cierre de cada día. Se muestra la peor de todas las cuentas." />
-          <StatCard label="Racha perdedora máx." value={String(streaks.maxL)} color="#F59E0B" sub="trades seguidos (sin contar BE)" desc="Mayor cantidad de operaciones perdedoras consecutivas, sumando todas las cuentas. Los breakeven no cortan la racha." />
+          <StatCard label="Racha perdedora máx." value={String(streaks.maxL)} color="#F59E0B" sub="setups seguidos (sin contar BE)" desc="Mayor cantidad de setups perdedores consecutivos. Un mismo setup operado en varias cuentas cuenta como uno. Los breakeven no cortan la racha." />
           <StatCard label="Consistencia mensual" value={cons.pct !== null ? cons.pct + '%' : '—'} color={cons.pct >= 70 ? '#22C55E' : '#F59E0B'} sub={`${cons.months.filter(m => m.positive).length}/${cons.months.length} meses positivos`} desc="Porcentaje de meses cerrados en positivo. Una consistencia alta (+70%) indica resultados estables mes a mes." />
         </div>
 

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { calcMetrics, isQuality, calcStreaks, calcDynamicGoals, calcDeteriorationAlerts, buildEquityCurve, calcFundedSummary, calcEvaluationStats, calcDayStatus, calcMaxDD, fmtR } from '../lib/metrics'
+import { calcMetrics, isQuality, calcStreaks, calcSetups, calcDynamicGoals, calcDeteriorationAlerts, buildEquityCurve, calcFundedSummary, calcEvaluationStats, calcDayStatus, calcMaxDD, fmtR } from '../lib/metrics'
 
 const CHECKLIST_ITEMS = [
   'Analicé 1D, 4H y 1H antes de abrir',
@@ -46,6 +46,7 @@ export default function Dashboard({ ctx }) {
   const qTrades = trades.filter(isQuality)
   const gQ = calcMetrics(qTrades)
   const streaks = calcStreaks(trades)
+  const nSetups = calcSetups(trades).length
   const goals = calcDynamicGoals(trades)
   const alerts = calcDeteriorationAlerts(trades, accounts)
   const active = accounts.filter(a => !['completed', 'closed', 'perdida'].includes(a.status))
@@ -148,7 +149,7 @@ export default function Dashboard({ ctx }) {
 
       {/* KPIs principales */}
       <div className="kpi-grid kpi-grid-4">
-        <KPICard dark label="Trades" value={g.n} sub={`${g.w}W · ${g.l}L · ${g.be} breakeven`} />
+        <KPICard dark label="Trades" value={g.n} sub={`${nSetups} setups · ${g.w}W · ${g.l}L · ${g.be} BE`} />
         <KPICard label="Win rate" value={g.wr !== null ? `${g.wr}%` : '—'} sub="sin contar breakeven" pos={g.wr >= 50} neg={g.wr !== null && g.wr < 50} />
         <KPICard label="R acumulado" value={fmtR(g.rSum)} sub={`1R = lo que arriesgás por trade · suma de cuentas ${g.pnl >= 0 ? '+' : ''}${g.pnl.toFixed(2)}%`} pos={g.rSum >= 0} neg={g.rSum < 0} />
         <KPICard label="Expectativa por trade" value={fmtR(g.avgR, 2)} sub={`Profit factor ${g.pf !== null ? g.pf.toFixed(2) : '—'} (en R)`} pos={g.avgR > 0} neg={g.avgR !== null && g.avgR < 0} goalBar={goalBarData(g.pf, goals.pfGoal)} />
@@ -157,7 +158,7 @@ export default function Dashboard({ ctx }) {
       <div className="kpi-grid kpi-grid-3" style={{ marginBottom: 14 }}>
         <KPICard gold label="Win rate calidad ✦" value={gQ.wr !== null ? `${gQ.wr}%` : '—'} sub={`${gQ.w}W · ${gQ.l}L · ${qTrades.length} disciplinados`} goalBar={goalBarData(gQ.wr, goals.wrGoal)} />
         <KPICard label="R:R real promedio" value={g.avgRR !== null ? `1:${g.avgRR.toFixed(1)}` : '—'} sub="promedio wins" pos={g.avgRR >= 2} goalBar={goalBarData(g.avgRR, goals.rrGoal)} />
-        <KPICard label="Racha actual" value={streaks.cur > 0 ? `${streaks.cur} ${streaks.type === 'Win' ? 'wins' : 'losses'}` : '—'} sub={`Máx wins: ${streaks.maxW} · Máx losses: ${streaks.maxL}`} pos={streaks.type === 'Win' && streaks.cur > 0} neg={streaks.type === 'Loss' && streaks.cur > 0} />
+        <KPICard label="Racha actual (setups)" value={streaks.cur > 0 ? `${streaks.cur} ${streaks.type === 'Win' ? 'wins' : 'losses'}` : '—'} sub={`Máx wins: ${streaks.maxW} · Máx losses: ${streaks.maxL}`} pos={streaks.type === 'Win' && streaks.cur > 0} neg={streaks.type === 'Loss' && streaks.cur > 0} />
       </div>
 
       {/* Semáforo de hoy + Cuentas fondeadas */}
@@ -174,8 +175,8 @@ export default function Dashboard({ ctx }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 18, marginTop: 14, fontSize: 11, color: 'var(--text3)' }}>
-            <span>Trades hoy: <b style={{ color: 'var(--text)' }}>{day.n}</b></span>
-            <span>Pérdidas: <b style={{ color: 'var(--text)' }}>{day.losses}</b></span>
+            <span>Setups hoy: <b style={{ color: 'var(--text)' }}>{day.n}</b> <span style={{ color: 'var(--text3)' }}>({day.nTrades} entradas)</span></span>
+            <span>Setups perdidos: <b style={{ color: 'var(--text)' }}>{day.losses}</b></span>
             <span>Resultado: <b style={{ color: day.rToday >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtR(day.rToday, 1)}</b></span>
           </div>
         </div>
