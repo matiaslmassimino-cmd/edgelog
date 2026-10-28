@@ -140,7 +140,7 @@ export default function Dashboard({ ctx }) {
 
       {/* KPIs principales */}
       <div className="kpi-grid kpi-grid-4">
-        <KPICard dark label="Trades totales" value={g.tr} sub={`${trades.length} entradas en diario`} />
+        <KPICard dark label="Trades totales" value={g.n} sub={`${trades.length} entradas en diario`} />
         <KPICard label="Win rate" value={g.wr !== null ? `${g.wr}%` : '—'} sub={`${g.w}W · ${g.l}L`} pos={g.wr >= 50} neg={g.wr !== null && g.wr < 50} />
         <KPICard label="P&L total" value={g.pnl >= 0 ? `+${g.pnl.toFixed(2)}%` : `${g.pnl.toFixed(2)}%`} sub="todas las cuentas" pos={g.pnl >= 0} neg={g.pnl < 0} />
         <KPICard label="Profitability Factor" value={g.pf !== null ? g.pf.toFixed(2) : '—'} sub={g.pf >= 1.5 ? 'Sólido ✓' : g.pf >= 1 ? 'Positivo' : 'Por debajo de 1'} pos={g.pf >= 1.5} neg={g.pf !== null && g.pf < 1} goalBar={goalBarData(g.pf, goals.pfGoal)} />

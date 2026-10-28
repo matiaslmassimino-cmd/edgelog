@@ -3,7 +3,17 @@ import { useState } from 'react'
 const RISK_OPTS = ['0.5%', '1%', '1.5%', '2%', '2.5%', '3%']
 const EMO_OPTS = ['Calmo 😌', 'Ansioso 😰', 'FOMO 😬', 'Revenge 😤']
 const SOB_OPTS = ['No', 'Sí, lo frené ✓', 'Sí, cedí']
-const PLAN_OPTS = ['100% exacto', 'Parcialmente', 'No cumplía']
+// Checklist pre-trade. El plan se DERIVA de estos 3 chequeos (no se elige a mano):
+// 3/3 → '100% exacto' · 1-2 → 'Parcialmente' · 0 → 'No cumplía'.
+const CHECKS = [
+  { key: 'chkEst', label: 'Cambio de estructura' },
+  { key: 'chkConf', label: 'Vela de confirmación' },
+  { key: 'chkLiq', label: 'Liquidó máximo/mínimo o reacción a FVG' },
+]
+export function planFromChecks(f) {
+  const n = CHECKS.filter(c => f[c.key]).length
+  return n === 3 ? '100% exacto' : n > 0 ? 'Parcialmente' : 'No cumplía'
+}
 const PAR_OPTS = ['No — full target', 'Sí — retiré parciales']
 const RES_OPTS = ['Win', 'Loss', 'Breakeven']
 const DIR_OPTS = ['Compra', 'Venta']
@@ -34,7 +44,7 @@ function ChipGroup({ opts, value, onChange }) {
 }
 
 const today = () => new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-const EMPTY = { fecha: today(), cid: '', par: 'EURUSD', tmp: '2m', rr: '', rrReal: '', nota: '', risk: '', resultado: '', direccion: '', parciales: 'No — full target', plan: '', emo: '', sob: 'No' }
+const EMPTY = { fecha: today(), cid: '', par: 'EURUSD', tmp: '2m', rr: '', rrReal: '', nota: '', risk: '', resultado: '', direccion: '', parciales: 'No — full target', plan: '', chkEst: false, chkConf: false, chkLiq: false, emo: '', sob: 'No' }
 const EMPTY_WD = { fecha: today(), cid: '', usd: '', pct: '', nota: '' }
 
 export default function DiarioPage({ ctx }) {
@@ -78,7 +88,9 @@ export default function DiarioPage({ ctx }) {
         resultado: f.resultado, rr: rrObj, rr_real: rrReal,
         parciales: f.parciales?.includes('Sí') ? 'Sí' : 'No',
         direccion: f.direccion || '—', r_pnl: rPnl,
-        plan: f.plan || '—', emo: f.emo?.split(' ')[0] || '—', sob: f.sob || '—',
+        plan: planFromChecks(f),
+        chk_estructura: !!f.chkEst, chk_confirmacion: !!f.chkConf, chk_liquidez_fvg: !!f.chkLiq,
+        emo: f.emo?.split(' ')[0] || '—', sob: f.sob || '—',
         par: f.par, tmp: f.tmp, nota: f.nota
       })
       toast('✓ Entrada guardada', 'ok')
@@ -152,7 +164,16 @@ export default function DiarioPage({ ctx }) {
               <div className="fg"><label className="fl">Dirección</label><ChipGroup opts={DIR_OPTS} value={f.direccion} onChange={v => setF(p => ({ ...p, direccion: v }))} /></div>
               <div className="fg"><label className="fl">Riesgo</label><ChipGroup opts={RISK_OPTS} value={f.risk} onChange={v => setF(p => ({ ...p, risk: v.replace('%', '') }))} /></div>
               <div className="fg"><label className="fl">¿Parciales?</label><ChipGroup opts={PAR_OPTS} value={f.parciales} onChange={v => setF(p => ({ ...p, parciales: v }))} /></div>
-              <div className="fg"><label className="fl">¿Cumplí el plan?</label><ChipGroup opts={PLAN_OPTS} value={f.plan} onChange={v => setF(p => ({ ...p, plan: v }))} /></div>
+              <div className="fg"><label className="fl">Checklist del setup (marcalo antes de ver el resultado)</label>
+                <div className="chip-group">
+                  {CHECKS.map(c => (
+                    <button key={c.key} className={`chip ${f[c.key] ? 'active-green' : ''}`} onClick={() => setF(p => ({ ...p, [c.key]: !p[c.key] }))}>
+                      {f[c.key] ? '✓ ' : ''}{c.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: '#8AA09E', marginTop: 6 }}>Plan resultante: <b>{planFromChecks(f)}</b> ({CHECKS.filter(c => f[c.key]).length}/3)</div>
+              </div>
               <div className="fg"><label className="fl">Estado emocional</label><ChipGroup opts={EMO_OPTS} value={f.emo} onChange={v => setF(p => ({ ...p, emo: v }))} /></div>
               <div className="fg"><label className="fl">¿Sobreoperé?</label><ChipGroup opts={SOB_OPTS} value={f.sob} onChange={v => setF(p => ({ ...p, sob: v }))} /></div>
             </div>

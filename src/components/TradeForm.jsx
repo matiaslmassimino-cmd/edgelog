@@ -91,7 +91,7 @@ export default function PublicKPIs({ g, gQ, trades, accounts, active, capActive,
         <div style={{padding:'24px 28px',background:'#fff'}}>
           <div style={{fontSize:10.5,textTransform:'uppercase',letterSpacing:'.12em',color:'#8AA09E',marginBottom:8,fontWeight:600}}>Resultado real</div>
           <div style={{fontFamily:'DM Serif Display,serif',fontSize:40,lineHeight:1,color:g.pnl>=0?'#1A7A4A':'#B83232'}}>{g.pnl>=0?'+':''}{g.pnl.toFixed(2)}%</div>
-          <div style={{fontSize:11.5,color:'#8AA09E',marginTop:6}}>{g.tr} trades · incluye {trades.filter(e=>!isQuality(e)).length} fuera de plan</div>
+          <div style={{fontSize:11.5,color:'#8AA09E',marginTop:6}}>{g.n} trades · incluye {trades.filter(e=>!isQuality(e)).length} fuera de plan</div>
         </div>
         <div style={{padding:'24px 28px',background:'#EBF4F3'}}>
           <div style={{fontSize:10.5,textTransform:'uppercase',letterSpacing:'.12em',color:'#3A7068',marginBottom:8,fontWeight:600}}>Potencial del sistema ✦</div>
