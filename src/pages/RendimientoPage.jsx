@@ -128,6 +128,36 @@ export default function RendimientoPage({ ctx }) {
         </div>
       </div>
 
+      {/* Rentabilidad de cada cuenta sobre SU capital (en paralelo al total ponderado) */}
+      {selectedAcc === 'all' && (() => {
+        const rows = funded.map(a => {
+          const ts = baseTrades.filter(t => String(t.cid) === String(a.id) && isClosed(t))
+          const pct = ts.reduce((x, t) => x + (t.r_pnl || 0), 0)
+          return { a, n: ts.length, pct: parseFloat(pct.toFixed(2)), usd: Math.round(pct / 100 * (a.capital || 0)) }
+        }).filter(r => r.n > 0)
+        if (rows.length < 2) return null
+        const avg = parseFloat((rows.reduce((x, r) => x + r.pct, 0) / rows.length).toFixed(2))
+        return (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title">Rentabilidad de cada cuenta sobre su propio capital</div>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${rows.length + 1}, 1fr)`, gap: 10 }}>
+              {rows.map(({ a, n, pct, usd }) => (
+                <div key={a.id} style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>{a.nombre} · ${(a.capital || 0).toLocaleString('es-AR')}</div>
+                  <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: pct >= 0 ? 'var(--green)' : 'var(--red)' }}>{pct >= 0 ? '+' : ''}{pct}%</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{usd >= 0 ? '+' : ''}${usd.toLocaleString('es-AR')} · {n} trades</div>
+                </div>
+              ))}
+              <div style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg3)' }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Promedio por cuenta</div>
+                <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: avg >= 0 ? 'var(--green)' : 'var(--red)' }}>{avg >= 0 ? '+' : ''}{avg}%</div>
+                <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>cada cuenta pesa igual, sin importar el tamaño</div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Tabs período */}
       <div className="tab-bar">
         {['week','month','year'].map(t => (
