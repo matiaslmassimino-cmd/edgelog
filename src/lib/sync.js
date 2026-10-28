@@ -25,9 +25,10 @@ export async function saveTrade(userId, trade) {
   // Checklist pre-trade (columnas de la migración 20261028). Solo se envían si existen en el trade.
   const chk = {}
   ;['chk_estructura', 'chk_confirmacion', 'chk_liquidez_fvg'].forEach(k => { if (typeof trade[k] === 'boolean') chk[k] = trade[k] })
+  if (trade.setup_id) chk.setup_id = String(trade.setup_id)
   let { error } = await supabase.from('trades').upsert({ ...row, ...chk })
   // Si la migración todavía no se corrió, la columna no existe: se guarda igual sin el checklist.
-  if (error && Object.keys(chk).length && (error.code === 'PGRST204' || /chk_/.test(error.message || ''))) {
+  if (error && Object.keys(chk).length && (error.code === 'PGRST204' || /chk_|setup_id/.test(error.message || ''))) {
     ;({ error } = await supabase.from('trades').upsert(row))
   }
   if (error) throw error

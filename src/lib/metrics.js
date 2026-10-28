@@ -82,6 +82,62 @@ export function sortTrades(trades) {
   })
 }
 
+
+// ── SETUPS ─────────────────────────────────────────────────────────────────
+// Un mismo setup se opera en varias cuentas a la vez (p. ej. 1 fondeada + 1 challenge) y esas
+// filas ganan o pierden juntas: no son decisiones independientes. Un "setup" agrupa esas filas.
+// - Trades nuevos: comparten t.setup_id (lo asigna el Diario).
+// - Trades históricos (sin setup_id): se agrupan por fecha + dirección + resultado, y dentro de
+//   cada grupo una cuenta no puede repetirse (si se repite, empieza otro setup). Es una
+//   estimación: el orden dentro del día no se conserva en los datos viejos.
+export function assignSetups(trades) {
+  const out = new Map()   // id -> setupKey
+  const legacy = {}
+  sortTrades(trades.filter(isClosed)).forEach(t => {
+    if (t.setup_id) { out.set(t.id, 's:' + t.setup_id); return }
+    const k = `${t.fecha}|${t.direccion || '—'}|${t.resultado}`
+    const list = legacy[k] || (legacy[k] = [])
+    let target = list.find(g => !g.cids.has(String(t.cid)))
+    if (!target) { target = { n: list.length, cids: new Set() }; list.push(target) }
+    target.cids.add(String(t.cid))
+    out.set(t.id, `l:${k}#${target.n}`)
+  })
+  return out
+}
+
+export function calcSetups(trades) {
+  const map = assignSetups(trades)
+  const groups = new Map()
+  sortTrades(trades.filter(isClosed)).forEach(t => {
+    const k = map.get(t.id)
+    if (!groups.has(k)) groups.set(k, { key: k, fecha: t.fecha, trades: [], legacy: k.startsWith('l:') })
+    groups.get(k).trades.push(t)
+  })
+  return [...groups.values()].map(g => {
+    const rs = g.trades.map(rOf)
+    const rSum = rs.reduce((a, b) => a + b, 0)
+    const res = new Set(g.trades.map(t => t.resultado))
+    const resultado = res.size === 1 ? [...res][0] : (rSum > 0.05 ? 'Win' : rSum < -0.05 ? 'Loss' : 'Breakeven')
+    return { ...g, n: g.trades.length, rSum: parseFloat(rSum.toFixed(3)), rAvg: rSum / g.trades.length, resultado }
+  })   // ya viene en orden cronológico (se armó desde sortTrades)
+}
+
+// Orden del setup dentro del día (1º, 2º, 3º...)
+export function calcNthSetupStats(trades) {
+  const sets = calcSetups(trades), cnt = {}, buckets = {}
+  sets.forEach(g => {
+    cnt[g.fecha] = (cnt[g.fecha] || 0) + 1
+    const k = Math.min(cnt[g.fecha], 3)
+    ;(buckets[k] = buckets[k] || []).push(g)
+  })
+  const out = {}
+  Object.entries(buckets).forEach(([k, arr]) => {
+    const w = arr.filter(g => g.resultado === 'Win').length, l = arr.filter(g => g.resultado === 'Loss').length
+    out[k] = { n: arr.length, avgR: parseFloat((arr.reduce((a, g) => a + g.rAvg, 0) / arr.length).toFixed(3)), w, l }
+  })
+  return out
+}
+
 export function calcMetrics(trades) {
   const wins = trades.filter(e => e.resultado === 'Win')
   const losses = trades.filter(e => e.resultado === 'Loss')
@@ -112,18 +168,20 @@ export function calcMetrics(trades) {
 // Intervalo de confianza 95% (bootstrap, semilla fija → resultado reproducible)
 // del R medio por trade. Sirve para no sobreinterpretar muestras chicas.
 export function calcExpectancyCI(trades, iters = 2000) {
-  const rs = trades.filter(isClosed).map(rOf)
-  if (rs.length < 10) return null
+  // Bootstrap por SETUP (no por fila): filas del mismo setup no son independientes.
+  const sets = calcSetups(trades)
+  if (sets.length < 10) return null
+  const cl = sets.map(g => ({ r: g.rSum, n: g.n }))
   let seed = 123456789
   const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
   const means = []
   for (let i = 0; i < iters; i++) {
-    let s = 0
-    for (let j = 0; j < rs.length; j++) s += rs[Math.floor(rnd() * rs.length)]
-    means.push(s / rs.length)
+    let sr = 0, sn = 0
+    for (let j = 0; j < cl.length; j++) { const c = cl[Math.floor(rnd() * cl.length)]; sr += c.r; sn += c.n }
+    means.push(sr / sn)
   }
   means.sort((a, b) => a - b)
-  return { lo: parseFloat(means[Math.floor(iters * 0.025)].toFixed(3)), hi: parseFloat(means[Math.floor(iters * 0.975)].toFixed(3)), n: rs.length }
+  return { lo: parseFloat(means[Math.floor(iters * 0.025)].toFixed(3)), hi: parseFloat(means[Math.floor(iters * 0.975)].toFixed(3)), n: trades.filter(isClosed).length, setups: sets.length }
 }
 
 // Estadísticas por grupo (plan, riesgo, emoción, firma, nº de trade del día, etc.)
@@ -209,35 +267,35 @@ export function calcRiskBucket(trades, minRisk) {
   return calcMetrics(trades.filter(t => isClosed(t) && riskOf(t) >= minRisk))
 }
 
-// Estado de disciplina de un día (semáforo y Diario).
-// Solo afirma lo que los datos sostienen: el orden dentro de un día histórico NO se conserva
-// con certeza, así que no se citan cifras del 2º/3º trade; sí del "4º trade o más", que es
-// negativo en cualquier orden posible. Las reglas de corte (2 pérdidas) son una regla estándar
-// de gestión de riesgo, no una conclusión estadística.
+// Estado de disciplina de un día (semáforo y Diario), contado en SETUPS (no en filas/cuentas).
+// Regla de corte: 2 setups perdedores en el día, o 3 setups en total. Es una regla de gestión
+// de riesgo, no una conclusión estadística. Dentro de un día histórico el orden es aproximado.
 export function calcDayStatus(trades, fecha) {
-  const day = sortTrades(trades.filter(t => isClosed(t) && t.fecha === fecha))
-  const losses = day.filter(t => t.resultado === 'Loss').length
-  const last = day.length ? day[day.length - 1] : null
-  const rToday = parseFloat(day.reduce((s, t) => s + rOf(t), 0).toFixed(2))
-  const nth = calcNthTradeStats(trades)
-  const nextN = day.length + 1
-  const late = nth[4]
-  let level = 'ok', msg = day.length ? `${day.length} trade${day.length > 1 ? 's' : ''} hoy · ${fmtR(rToday, 1)}.` : 'Sin trades hoy. Operá solo el setup completo.'
+  const dayTrades = trades.filter(t => isClosed(t) && t.fecha === fecha)
+  const sets = calcSetups(trades).filter(g => g.fecha === fecha)
+  const losses = sets.filter(g => g.resultado === 'Loss').length
+  const last = sets.length ? sets[sets.length - 1] : null
+  const rToday = parseFloat(dayTrades.reduce((s, t) => s + rOf(t), 0).toFixed(2))
+  const nth = calcNthSetupStats(trades)
+  const late = nth[3]
+  const nT = dayTrades.length
+  const lbl = `${sets.length} setup${sets.length === 1 ? '' : 's'} (${nT} entrada${nT === 1 ? '' : 's'} en cuentas)`
+  let level = 'ok', msg = sets.length ? `${lbl} hoy · ${fmtR(rToday, 1)} sumando cuentas.` : 'Sin trades hoy. Operá solo el setup completo.'
   if (last && last.resultado === 'Loss') {
     level = 'warn'
-    msg = 'Tu último trade de hoy fue pérdida. Antes del próximo, confirmá que el setup sea 100% exacto.'
+    msg = 'Tu último setup de hoy fue pérdida. Antes de reintentar, confirmá que el nuevo sea 100% exacto.'
   }
-  if (day.length >= 3) {
+  if (sets.length >= 2 && level === 'ok') {
     level = 'warn'
-    msg = `Llevás ${day.length} trades hoy. El 4º trade del día o más rinde ${fmtR(late?.avgR, 2)} por trade en tus datos (${late?.n || 0} trades).`
+    msg = `${lbl} hoy. Un tercer setup en el día solo si es 100% exacto.`
   }
-  if (losses >= 2 || day.length >= 4) {
+  if (losses >= 2 || sets.length >= 3) {
     level = 'stop'
     msg = losses >= 2
-      ? `${losses} pérdidas hoy (${fmtR(rToday, 1)}). Regla de corte: cerrá la sesión, no hay nada que recuperar.`
-      : `Ya hiciste ${day.length} trades hoy. En tus datos, del 4º en adelante el resultado es ${fmtR(late?.avgR, 2)} por trade.`
+      ? `${losses} setups perdidos hoy (${fmtR(rToday, 1)} sumando cuentas). Regla de corte: cerrá la sesión, no hay nada que recuperar.`
+      : `Ya llevás ${sets.length} setups hoy. ${late && late.n >= 8 ? `Tus terceros setups del día rinden ${fmtR(late.avgR, 2)} por setup (${late.n} casos).` : 'Cortá si no es 100% exacto.'}`
   }
-  return { n: day.length, losses, rToday, level, msg, nextN, late }
+  return { n: sets.length, nTrades: nT, losses, rToday, level, msg, nextN: sets.length + 1, late }
 }
 
 export function calcPlanBreakdown(trades) {
@@ -300,12 +358,8 @@ export function periodMetrics(trades) {
 }
 
 export function calcStreaks(trades) {
-  const sorted = [...trades]
-    .filter(e => e.resultado === 'Win' || e.resultado === 'Loss')
-    .sort((a, b) => {
-      const da = parseFecha(a.fecha), db = parseFecha(b.fecha)
-      return (da - db) || (a.id - b.id)
-    })
+  // Rachas contadas en SETUPS (un setup operado en 2 cuentas es 1 decisión). Los BE no cortan.
+  const sorted = calcSetups(trades).filter(g => g.resultado === 'Win' || g.resultado === 'Loss')
   if (!sorted.length) return { cur: 0, type: null, maxW: 0, maxL: 0, last10: [] }
   let cur = 1, curType = sorted[sorted.length - 1].resultado
   let maxW = 0, maxL = 0, tmpS = 1, tmpT = sorted[0].resultado
