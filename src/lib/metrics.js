@@ -161,7 +161,30 @@ export function calcFundedSummary(trades, accounts) {
     return s + pct / 100 * (a.capital || 0)
   }, 0)
   const exact = calcMetrics(ft.filter(isQuality))
-  return { m, n: ft.length, accounts: live.length, capital: live.reduce((s, a) => s + (a.capital || 0), 0), usd: parseFloat(usd.toFixed(0)), exact, trades: ft }
+  // Rentabilidad SIN interés compuesto: cada trade se mide sobre el capital inicial de su cuenta,
+  // y el total se expresa sobre la suma del capital de las cuentas fondeadas con operaciones.
+  const perAccount = fundedAccs.map(a => {
+    const pct = ft.filter(t => String(t.cid) === String(a.id)).reduce((x, t) => x + (t.r_pnl || 0), 0)
+    const n = ft.filter(t => String(t.cid) === String(a.id)).length
+    return { id: a.id, nombre: a.nombre, capital: a.capital || 0, status: a.status, n, pct: parseFloat(pct.toFixed(2)), usd: parseFloat((pct / 100 * (a.capital || 0)).toFixed(0)) }
+  }).filter(x => x.n > 0)
+  const base = perAccount.reduce((s, x) => s + x.capital, 0)
+  const pct = base > 0 ? parseFloat((usd / base * 100).toFixed(2)) : 0
+  return { m, n: ft.length, accounts: live.length, capital: live.reduce((s, a) => s + (a.capital || 0), 0), usd: parseFloat(usd.toFixed(0)), pct, base, perAccount, exact, trades: ft }
+}
+
+// Curva de capital de las fondeadas en % del capital total, sin interés compuesto.
+export function calcFundedCurve(trades, accounts) {
+  const cap = new Map(accounts.map(a => [String(a.id), a.capital || 0]))
+  const ft = sortTrades(trades.filter(isClosed))
+  const base = [...new Set(ft.map(t => String(t.cid)))].reduce((s, id) => s + (cap.get(id) || 0), 0)
+  let usd = 0
+  const data = [{ fecha: 'Inicio', pnl: 0, usd: 0 }]
+  ft.forEach(t => {
+    usd += (t.r_pnl || 0) / 100 * (cap.get(String(t.cid)) || 0)
+    data.push({ fecha: t.fecha, pnl: base > 0 ? parseFloat((usd / base * 100).toFixed(2)) : 0, usd: Math.round(usd) })
+  })
+  return data
 }
 
 // Fases de evaluación: aprobadas / perdidas / en curso
