@@ -42,13 +42,6 @@ export default function useData(userId) {
   const removeRule = async (id) => { await deleteRule(id); await reload() }
   const updateProfile = async (p) => { await saveProfile(userId, p); await reload() }
 
-  const migrateFromPreload = async () => {
-    const res = await fetch('/edgelog/preload.json')
-    const data = await res.json()
-    await bulkMigrate(userId, data)
-    await reload()
-  }
-
   const importCSV = async (csvText) => {
     const result = await bulkImportCSV(userId, csvText, accounts)
     await reload()
@@ -64,6 +57,6 @@ export default function useData(userId) {
     addAccount, removeAccount, setAccStatus,
     addWithdrawal, removeWithdrawal,
     addRule, removeRule,
-    updateProfile, migrateFromPreload, importCSV, exportCSV
+    updateProfile, importCSV, exportCSV
   }
 }
