@@ -3,13 +3,12 @@
 -- Las vistas usan security_invoker: respetan las políticas RLS de quien consulta.
 
 -- 1) Columnas opcionales para el checklist pre-trade (la app aún no las completa).
---    Se guardan ANTES de conocer el resultado para evitar el sesgo de etiquetado.
+--    Se marcan ANTES de conocer el resultado; `plan` se deriva de ellos (3/3 exacto, 1-2 parcial, 0 no cumplía).
 alter table public.trades
   add column if not exists opened_at        timestamptz,
-  add column if not exists chk_zona         boolean,
-  add column if not exists chk_confirmacion boolean,
-  add column if not exists chk_horario      boolean,
-  add column if not exists chk_espero       boolean;
+  add column if not exists chk_estructura   boolean,  -- cambio de estructura
+  add column if not exists chk_confirmacion boolean,  -- vela de confirmación
+  add column if not exists chk_liquidez_fvg boolean;  -- liquidó máx/mín o reacción a FVG
 
 -- 2) Trades cerrados con R, fecha real y nº de trade del día.
 --    R = r_pnl / rp (ambos en % de cuenta). trade_n_day se ordena por id.
