@@ -245,6 +245,47 @@ export function calcUnifiedReturn(trades, accounts) {
   return { pct: parseFloat(pct.toFixed(2)), usd: Math.round(pct / 100 * base), base, setups: sets.length, trades: ft.length }
 }
 
+// Crecimiento del capital fondeado en el tiempo. Una cuenta "entra" el día de su primer trade
+// (no hay fecha de alta en los datos) y deja de contar al cerrarse/perderse (su último trade).
+// Devuelve la serie fecha -> capital operando y P&L acumulado en USD, y la rentabilidad sobre el
+// CAPITAL PROMEDIO operado (capital × días), que es más justa que dividir por el capital final.
+export function calcFundedGrowth(trades, accounts) {
+  const fundedAccs = accounts.filter(a => a.type === 'funded')
+  const ids = new Set(fundedAccs.map(a => String(a.id)))
+  const ft = trades.filter(t => isClosed(t) && ids.has(String(t.cid)))
+  if (!ft.length) return null
+  const day = f => { const d = parseFecha(f); return d ? Math.floor(d.getTime() / 86400000) : null }
+  const info = fundedAccs.map(a => {
+    const ts = ft.filter(t => String(t.cid) === String(a.id)).map(t => day(t.fecha)).filter(x => x !== null)
+    if (!ts.length) return null
+    const ended = ['completed', 'closed', 'perdida'].includes(a.status)
+    return { a, start: Math.min(...ts), end: ended ? Math.max(...ts) : null, cap: a.capital || 0 }
+  }).filter(Boolean)
+  const today = Math.floor(Date.now() / 86400000)
+  const t0 = Math.min(...info.map(i => i.start))
+  const events = [...new Set([...ft.map(t => day(t.fecha)), ...info.map(i => i.start), ...info.filter(i => i.end !== null).map(i => i.end), today])].filter(x => x !== null).sort((a, b) => a - b)
+  const capAt = d => info.filter(i => i.start <= d && (i.end === null || d <= i.end)).reduce((x, i) => x + i.cap, 0)
+  const usdByDay = {}
+  ft.forEach(t => {
+    const cap = fundedAccs.find(a => String(a.id) === String(t.cid))?.capital || 0
+    const d = day(t.fecha); usdByDay[d] = (usdByDay[d] || 0) + (t.r_pnl || 0) / 100 * cap
+  })
+  let cum = 0, capDays = 0
+  const fmt = d => { const x = new Date(d * 86400000); return `${String(x.getUTCDate()).padStart(2, '0')}/${String(x.getUTCMonth() + 1).padStart(2, '0')}/${x.getUTCFullYear()}` }
+  const points = events.map((d, i) => {
+    cum += usdByDay[d] || 0
+    return { fecha: fmt(d), capital: capAt(d), usd: Math.round(cum) }
+  })
+  for (let d = t0; d <= today; d++) capDays += capAt(d)
+  const avgCap = capDays / (today - t0 + 1)
+  const usd = Math.round(cum)
+  return {
+    points, usd, avgCap: Math.round(avgCap), days: today - t0 + 1,
+    retAvg: avgCap > 0 ? parseFloat((usd / avgCap * 100).toFixed(2)) : 0,
+    steps: info.map(i => ({ nombre: i.a.nombre, cap: i.cap, fecha: fmt(i.start) })).sort((a, b) => 0)
+  }
+}
+
 // Curva de capital de las fondeadas en % del capital total, sin interés compuesto.
 export function calcFundedCurve(trades, accounts) {
   const cap = new Map(accounts.map(a => [String(a.id), a.capital || 0]))
