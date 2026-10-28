@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { fetchPublicDataBySlug } from '../lib/sync'
-import { calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcExpectancyCI, calcExecutionSplit, fmtR, calcMaxDD, calcFundedSummary, calcEvaluationStats, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
+import { calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcExpectancyCI, calcExecutionSplit, fmtR, calcMaxDD, calcFundedSummary, calcFundedCurve, calcEvaluationStats, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 
 const tip = { background: '#0F1828', border: '1px solid #1E3A5F', borderRadius: 10, fontSize: 11, color: '#E2E8F0', padding: '10px 14px' }
@@ -267,7 +267,7 @@ export default function Public() {
   const aum = calcAUM(accounts, trades, {})
   const equityData = buildEquityCurve(trades, 'R')
   const funded = calcFundedSummary(trades, accounts)
-  const fundedCurve = buildEquityCurve(funded.trades, 'R')
+  const fundedCurve = calcFundedCurve(funded.trades, accounts)
   const evals = calcEvaluationStats(accounts)
   const ddR = calcMaxDD(trades, 'R'), ddPct = calcMaxDD(trades)
   const split = calcExecutionSplit(trades)
@@ -401,7 +401,8 @@ export default function Public() {
               <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 38, color: '#FBBF24', lineHeight: 1 }}>${funded.capital.toLocaleString('es-AR')}</div>
               <div style={{ fontSize: 12, color: '#94A3B8' }}>en {funded.accounts} cuentas fondeadas activas · {funded.n} operaciones · P&L bruto <b style={{ color: funded.usd >= 0 ? '#22C55E' : '#EF4444' }}>{funded.usd >= 0 ? '+' : ''}${funded.usd.toLocaleString('es-AR')}</b></div>
             </div>
-            <div className="pub-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
+            <div className="pub-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginBottom: 14 }}>
+              <StatCard label="Rentabilidad" value={(funded.pct >= 0 ? '+' : '') + funded.pct + '%'} color={funded.pct >= 0 ? '#22C55E' : '#EF4444'} sub="sobre capital, sin compuesto" desc="Ganancia total sobre el capital inicial de las cuentas fondeadas. No usa interés compuesto: cada operación se mide sobre el tamaño original de la cuenta." />
               <StatCard label="R acumulado" value={fmtR(funded.m.rSum)} color={funded.m.rSum >= 0 ? '#22C55E' : '#EF4444'} sub={`${funded.m.w}W · ${funded.m.l}L · ${funded.m.be} BE`} desc="Suma del resultado de todas las operaciones en cuentas fondeadas, medido en R." />
               <StatCard label="Expectativa" value={fmtR(funded.m.avgR, 2)} color={funded.m.avgR > 0 ? '#22C55E' : '#EF4444'} sub="por trade" desc="Resultado promedio por operación en cuentas fondeadas." />
               <StatCard label="Win rate" value={funded.m.wr !== null ? funded.m.wr + '%' : '—'} color={funded.m.wr >= 50 ? '#22C55E' : '#F59E0B'} sub="sin contar breakeven" desc="Porcentaje de operaciones ganadoras sobre ganadoras más perdedoras." />
@@ -416,8 +417,8 @@ export default function Public() {
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + 'R'} />
-                <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + 'R', 'Fondeadas']} labelStyle={{ color: '#FBBF24', fontWeight: 600 }} />
+                <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + '%'} />
+                <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'Fondeadas']} labelStyle={{ color: '#FBBF24', fontWeight: 600 }} />
                 <Area type="monotone" dataKey="pnl" stroke="#FBBF24" strokeWidth={2.2} fill="url(#pnlGradFund)" dot={false} />
               </AreaChart>
             </ResponsiveContainer>

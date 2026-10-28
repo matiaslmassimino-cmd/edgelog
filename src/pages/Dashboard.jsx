@@ -189,8 +189,9 @@ export default function Dashboard({ ctx }) {
                 <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 30, color: 'var(--gold)', lineHeight: 1 }}>${funded.capital.toLocaleString('es-AR')}</div>
                 <div style={{ fontSize: 12, color: 'var(--text2)' }}>fondeados · {funded.accounts} cuentas · P&L bruto <b style={{ color: funded.usd >= 0 ? 'var(--green)' : 'var(--red)' }}>{funded.usd >= 0 ? '+' : ''}${funded.usd.toLocaleString('es-AR')}</b></div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginTop: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginTop: 14 }}>
                 {[
+                  ['Rentabilidad', (funded.pct >= 0 ? '+' : '') + funded.pct + '%', funded.pct >= 0],
                   ['R acumulado', fmtR(funded.m.rSum), funded.m.rSum >= 0],
                   ['Expectativa', fmtR(funded.m.avgR, 2), funded.m.avgR >= 0],
                   ['Win rate', funded.m.wr !== null ? funded.m.wr + '%' : '—', funded.m.wr >= 50],
@@ -202,8 +203,16 @@ export default function Dashboard({ ctx }) {
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 12 }}>
-                {funded.n} trades en fondeadas · Evaluaciones: {evals.passed} aprobadas · {evals.lost} perdidas · {evals.running} en curso{evals.rate !== null ? ` (${evals.rate}% de aprobación)` : ''}
+              <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {funded.perAccount.map(a => (
+                  <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text2)' }}>
+                    <span>{a.nombre} · ${a.capital.toLocaleString('es-AR')} · {a.n} trades</span>
+                    <span style={{ color: a.pct >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{a.pct >= 0 ? '+' : ''}{a.pct}% · {a.usd >= 0 ? '+' : ''}${a.usd.toLocaleString('es-AR')}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 10.5, color: 'var(--text3)', marginTop: 10 }}>
+                Rentabilidad sobre capital inicial, sin interés compuesto · {funded.n} trades en fondeadas · Evaluaciones: {evals.passed} aprobadas · {evals.lost} perdidas · {evals.running} en curso{evals.rate !== null ? ` (${evals.rate}% de aprobación)` : ''}
               </div>
             </>)}
         </div>
