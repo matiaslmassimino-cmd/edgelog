@@ -245,6 +245,26 @@ export function calcFundedCurve(trades, accounts) {
   return data
 }
 
+// Margen de riesgo de una cuenta frente a los límites de la firma (pérdida diaria y drawdown máximo).
+// Supuestos (revisables): ambos límites se miden sobre el capital inicial, sin interés compuesto, y el
+// drawdown máximo es estático (desde el balance inicial). Solo ve operaciones cerradas: no conoce el
+// flotante intradía, así que es una guía y no reemplaza el panel de la firma.
+export const DAILY_LOSS_LIMIT = 5
+export function calcAccountRisk(trades, acc, fecha, riskPerTrade = 1) {
+  const mine = trades.filter(t => isClosed(t) && String(t.cid) === String(acc.id))
+  const cum = mine.reduce((x, t) => x + (t.r_pnl || 0), 0)
+  const today = mine.filter(t => t.fecha === fecha).reduce((x, t) => x + (t.r_pnl || 0), 0)
+  const maxLimit = parseFloat(acc.dd) || 8
+  const dayMargin = parseFloat((DAILY_LOSS_LIMIT + Math.min(today, 0)).toFixed(2))
+  const ddMargin = parseFloat((maxLimit + Math.min(cum, 0)).toFixed(2))
+  const margin = Math.min(dayMargin, ddMargin)
+  const binding = dayMargin <= ddMargin ? 'diario' : 'máximo'
+  const risk = riskPerTrade > 0 ? riskPerTrade : 1
+  const slLeft = Math.max(0, Math.floor(margin / risk + 1e-9))
+  const level = margin <= risk ? 'stop' : margin <= risk * 2.5 ? 'warn' : 'ok'
+  return { today: parseFloat(today.toFixed(2)), cum: parseFloat(cum.toFixed(2)), dayMargin, ddMargin, maxLimit, margin, binding, slLeft, level }
+}
+
 // Fases de evaluación: aprobadas / perdidas / en curso
 export function calcEvaluationStats(accounts) {
   const ch = accounts.filter(a => a.type === 'challenge')
