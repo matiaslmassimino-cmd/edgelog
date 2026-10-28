@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { calcMetrics, isQuality, calcStreaks, calcSetups, calcAccountRisk, DAILY_LOSS_LIMIT, calcDynamicGoals, calcDeteriorationAlerts, buildEquityCurve, calcFundedSummary, calcEvaluationStats, calcDayStatus, calcMaxDD, fmtR } from '../lib/metrics'
+import { calcMetrics, isQuality, calcStreaks, calcSetups, calcDynamicGoals, calcDeteriorationAlerts, buildEquityCurve, calcFundedSummary, calcEvaluationStats, calcDayStatus, calcMaxDD, fmtR } from '../lib/metrics'
 
 const CHECKLIST_ITEMS = [
   'Analicé 1D, 4H y 1H antes de abrir',
@@ -245,15 +245,6 @@ export default function Dashboard({ ctx }) {
                     <div style={{ fontSize: 10, color: 'var(--text3)' }}>
                       {a.type === 'funded' ? 'Fondeada · ciclo actual' : `${a.fase} · obj ${a.objetivo}%`}
                     </div>
-                    {(() => {
-                      const rk = calcAccountRisk(trades, a, today, parseFloat(a.type === 'funded' ? (ctx.profile?.risk_funded || 1) : (ctx.profile?.risk_challenge || 2)) || 1)
-                      const col = rk.level === 'stop' ? 'var(--red)' : rk.level === 'warn' ? 'var(--amber)' : 'var(--text3)'
-                      return (
-                        <div style={{ fontSize: 10, color: col, marginTop: 2 }} title="Límites: pérdida diaria 5% y drawdown máximo de la cuenta, sobre el capital inicial. Solo cuenta operaciones cerradas.">
-                          Hoy {rk.today >= 0 ? '+' : ''}{rk.today}% (límite −{DAILY_LOSS_LIMIT}%) · Acumulado {rk.cum >= 0 ? '+' : ''}{rk.cum}% (límite −{rk.maxLimit}%) · margen {rk.margin}% ≈ {rk.slLeft} SL
-                        </div>
-                      )
-                    })()}
                     <div className="pb" style={{ marginTop: 4 }}>
                       <div className="pf" style={{ width: `${Math.abs(pct)}%`, background: pnl >= 0 ? 'var(--green)' : 'var(--red)' }} />
                     </div>
