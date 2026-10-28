@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { calcMetrics, isQuality, calcStreaks, calcSetups, calcAccountRisk, DAILY_LOSS_LIMIT, calcDynamicGoals, calcDeteriorationAlerts, buildEquityCurve, calcFundedSummary, calcEvaluationStats, calcDayStatus, calcMaxDD, fmtR } from '../lib/metrics'
+import { calcMetrics, isQuality, calcStreaks, calcSetups, calcDynamicGoals, calcDeteriorationAlerts, buildEquityCurve, calcFundedSummary, calcEvaluationStats, calcDayStatus, calcMaxDD, fmtR } from '../lib/metrics'
 
 const CHECKLIST_ITEMS = [
   'Analicé 1D, 4H y 1H antes de abrir',
@@ -151,7 +151,7 @@ export default function Dashboard({ ctx }) {
       <div className="kpi-grid kpi-grid-4">
         <KPICard dark label="Trades" value={g.n} sub={`${nSetups} setups · ${g.w}W · ${g.l}L · ${g.be} BE`} />
         <KPICard label="Win rate" value={g.wr !== null ? `${g.wr}%` : '—'} sub="sin contar breakeven" pos={g.wr >= 50} neg={g.wr !== null && g.wr < 50} />
-        <KPICard label="R acumulado" value={fmtR(g.rSum)} sub={`1R = lo que arriesgás por trade · suma de cuentas ${g.pnl >= 0 ? '+' : ''}${g.pnl.toFixed(2)}%`} pos={g.rSum >= 0} neg={g.rSum < 0} />
+        <KPICard label="R acumulado" value={fmtR(g.rSum)} sub={`1R = lo que arriesgás por trade`} pos={g.rSum >= 0} neg={g.rSum < 0} />
         <KPICard label="Expectativa por trade" value={fmtR(g.avgR, 2)} sub={`Profit factor ${g.pf !== null ? g.pf.toFixed(2) : '—'} (en R)`} pos={g.avgR > 0} neg={g.avgR !== null && g.avgR < 0} goalBar={goalBarData(g.pf, goals.pfGoal)} />
       </div>
 
@@ -245,15 +245,6 @@ export default function Dashboard({ ctx }) {
                     <div style={{ fontSize: 10, color: 'var(--text3)' }}>
                       {a.type === 'funded' ? 'Fondeada · ciclo actual' : `${a.fase} · obj ${a.objetivo}%`}
                     </div>
-                    {(() => {
-                      const rk = calcAccountRisk(trades, a, today, parseFloat(a.type === 'funded' ? (ctx.profile?.risk_funded || 1) : (ctx.profile?.risk_challenge || 2)) || 1)
-                      const col = rk.level === 'stop' ? 'var(--red)' : rk.level === 'warn' ? 'var(--amber)' : 'var(--text3)'
-                      return (
-                        <div style={{ fontSize: 10, color: col, marginTop: 2 }} title="Límites: pérdida diaria 5% y drawdown máximo de la cuenta, sobre el capital inicial. Solo cuenta operaciones cerradas.">
-                          Hoy {rk.today >= 0 ? '+' : ''}{rk.today}% (límite −{DAILY_LOSS_LIMIT}%) · Acumulado {rk.cum >= 0 ? '+' : ''}{rk.cum}% (límite −{rk.maxLimit}%) · margen {rk.margin}% ≈ {rk.slLeft} SL
-                        </div>
-                      )
-                    })()}
                     <div className="pb" style={{ marginTop: 4 }}>
                       <div className="pf" style={{ width: `${Math.abs(pct)}%`, background: pnl >= 0 ? 'var(--green)' : 'var(--red)' }} />
                     </div>

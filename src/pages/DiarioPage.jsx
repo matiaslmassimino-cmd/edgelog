@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { calcAccountRisk, calcDayStatus, calcRiskBucket, calcPlanBreakdown, fmtR } from '../lib/metrics'
+import { calcDayStatus, calcRiskBucket, calcPlanBreakdown, fmtR } from '../lib/metrics'
 
 const RISK_OPTS = ['0.5%', '1%', '1.5%', '2%', '2.5%', '3%']
 const EMO_OPTS = ['Calmo 😌', 'Ansioso 😰', 'FOMO 😬', 'Revenge 😤']
@@ -65,12 +65,6 @@ function DisciplinePanel({ f, trades, accounts, profile }) {
     const acc = accounts.find(a => String(a.id) === String(cid))
     const rp = parseFloat(f.risks[cid]) || 0
     if (!acc || !rp) return
-    const rk = calcAccountRisk(trades, acc, f.fecha, rp)
-    if (rp >= rk.margin) {
-      items.push({ level: 'stop', text: `${acc.nombre}: un SL de ${rp}% te deja sin margen (límite ${rk.binding}, quedan ${rk.margin}%). No entres con este riesgo.` })
-    } else if (rk.margin - rp < rp * 1.5) {
-      items.push({ level: 'warn', text: `${acc.nombre}: tras un SL de ${rp}% te quedan ${(rk.margin - rp).toFixed(2)}% hasta el límite ${rk.binding}.` })
-    }
     if (rp >= 2.5) {
       const b = calcRiskBucket(trades, 2.5)
       items.push({ level: 'stop', text: `${acc.nombre}: riesgo ${rp}%. En tus datos, los trades a 2.5% o más suman ${b.w} ganados y ${b.l} perdidos (${fmtR(b.avgR, 2)} por trade).` })
