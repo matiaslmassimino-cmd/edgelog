@@ -90,6 +90,10 @@ export async function saveWithdrawal(userId, accId, wd) {
   if (error) throw error
 }
 
+export async function updateWithdrawal(id, updates) {
+  const { error } = await supabase.from('withdrawals').update(updates).eq('id', id)
+  if (error) throw error
+}
 export async function deleteWithdrawal(id) {
   const { error } = await supabase.from('withdrawals').delete().eq('id', id)
   if (error) throw error

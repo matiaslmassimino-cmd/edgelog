@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import DataAudit from '../components/DataAudit'
 
 export default function AjustesPage({ ctx }) {
   const { trades, accounts, exportCSV, importCSV, toast, userId, profile, updateProfile } = ctx
@@ -58,6 +59,8 @@ export default function AjustesPage({ ctx }) {
         <div className="page-title">Ajus<em>tes</em></div>
         <div className="page-sub">Perfil, link público, importar y exportar datos.</div>
       </div>
+
+      <DataAudit ctx={ctx} />
 
       {/* Tabs */}
       <div className="tab-bar" style={{ marginBottom: 20 }}>

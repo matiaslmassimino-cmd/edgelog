@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { isQuality, calcMetrics, fmtR } from '../lib/metrics'
+import { isQuality, calcMetrics, fmtR, isRealFecha, isFutureFecha } from '../lib/metrics'
 
 const DIRS = ['—', 'Compra', 'Venta']
 
@@ -61,7 +61,9 @@ export default function HistorialPage({ ctx }) {
 
   async function saveEdit() {
     const e = edit
-    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(e.fecha)) { toast('Fecha con formato DD/MM/AAAA', 'err'); return }
+    if (!isRealFecha(e.fecha)) { toast('Fecha inválida (DD/MM/AAAA)', 'err'); return }
+    if (isFutureFecha(e.fecha)) { toast('La fecha es futura', 'err'); return }
+    if (e.resultado === 'Win' && !(parseFloat(e.rr_real) > 0)) { toast('Un ganador necesita R:R real mayor a 0', 'err'); return }
     const rp = parseFloat(e.risk)
     if (!rp) { toast('Riesgo inválido (ej: 1% o 2%)', 'err'); return }
     const rr = parseFloat(e.rr_real) || 0

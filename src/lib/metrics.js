@@ -653,3 +653,108 @@ export function calcMaxDD(trades, unit = 'pct') {
   })
   return parseFloat(worst.toFixed(2))
 }
+
+
+// ── FECHAS ─────────────────────────────────────────────────────────────────
+// Formato de almacenamiento: DD/MM/AAAA. Se valida que sea una fecha REAL (no 31/02) y no futura.
+export function isRealFecha(f) {
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(f || '')) return false
+  const [d, m, y] = f.split('/').map(Number)
+  const dt = new Date(y, m - 1, d)
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d
+}
+export function isFutureFecha(f) {
+  const d = parseFecha(f); if (!d) return false
+  const t = new Date(); t.setHours(23, 59, 59, 999)
+  return d.getTime() > t.getTime()
+}
+export const fechaToInput = f => { const p = (f || '').split('/'); return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : '' }
+export const inputToFecha = v => { const p = (v || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : '' }
+
+// ── LIBRO DE RETIROS ───────────────────────────────────────────────────────
+// Convención: el monto de cada retiro es lo COBRADO (tu parte, después del split de la firma).
+// Pendiente = ganancia bruta histórica × split − total cobrado. No "se resetea" con cada retiro, así que un
+// retiro parcial no hace desaparecer ganancia sin cobrar.
+export const splitOf = a => parseInt(String(a?.split || '80/20').split('/')[0]) || 80
+export function calcFundedLedger(trades, accounts, withdrawals) {
+  const rows = accounts.filter(a => a.type === 'funded').map(a => {
+    const cap = a.capital || 0
+    const ts = trades.filter(t => isClosed(t) && String(t.cid) === String(a.id))
+    const pct = ts.reduce((x, t) => x + (t.r_pnl || 0), 0)
+    const gross = pct / 100 * cap
+    const split = splitOf(a)
+    const wds = withdrawals[String(a.id)] || []
+    const cobrado = wds.reduce((x, w) => x + (w.usd || 0), 0)
+    const miParte = Math.max(0, gross) * split / 100
+    return { a, cap, n: ts.length, pct: parseFloat(pct.toFixed(2)), gross: Math.round(gross), split, miParte: Math.round(miParte), cobrado: Math.round(cobrado), pendiente: Math.round(Math.max(0, miParte - cobrado)), sobrecobrado: cobrado > miParte * 1.05 + 1, nWd: wds.length }
+  })
+  const sum = k => rows.reduce((x, r) => x + r[k], 0)
+  return { rows, gross: sum('gross'), miParte: sum('miParte'), cobrado: sum('cobrado'), pendiente: sum('pendiente'), capital: sum('cap'), nWd: sum('nWd') }
+}
+
+// Valida un retiro antes de guardarlo. Devuelve { errors:[], warnings:[] }.
+export function validateWithdrawal(wd, accounts, withdrawals, ledger, ignoreId = null) {
+  const errors = [], warnings = []
+  const acc = accounts.find(a => String(a.id) === String(wd.cid))
+  if (!acc) errors.push('Elegí una cuenta fondeada.')
+  if (!isRealFecha(wd.fecha)) errors.push('La fecha no es válida (DD/MM/AAAA).')
+  else if (isFutureFecha(wd.fecha)) errors.push('La fecha es futura.')
+  const usd = parseFloat(wd.usd)
+  if (!(usd > 0)) errors.push('El monto cobrado tiene que ser mayor a 0.')
+  if (acc && usd > 0) {
+    const dup = (withdrawals[String(acc.id)] || []).find(w => w.id !== ignoreId && w.fecha === wd.fecha && Math.abs((w.usd || 0) - usd) < 0.01)
+    if (dup) errors.push('Ya existe un retiro igual (misma cuenta, fecha y monto).')
+    const r = ledger?.rows.find(x => String(x.a.id) === String(acc.id))
+    if (r) {
+      const disponible = r.pendiente + (ignoreId ? ((withdrawals[String(acc.id)] || []).find(w => w.id === ignoreId)?.usd || 0) : 0)
+      if (usd > disponible * 1.1 + 1) warnings.push(`El monto ($${usd.toFixed(0)}) supera lo pendiente según tus trades ($${disponible}). Revisá el monto o la cuenta.`)
+      else if (usd < disponible * 0.5 && disponible > 50) warnings.push(`Cobrás bastante menos de lo pendiente ($${disponible}). Si fue un retiro parcial, queda saldo por cobrar.`)
+    }
+  }
+  return { errors, warnings }
+}
+
+// ── AUDITORÍA DE DATOS ─────────────────────────────────────────────────────
+// Detecta cargas que hacen que las métricas salgan mal. sev: 'error' (distorsiona números) | 'warn' | 'info'.
+export function auditData(trades, accounts, withdrawals) {
+  const issues = []
+  const accIds = new Set(accounts.map(a => String(a.id)))
+  const add = (sev, area, msg, extra = {}) => issues.push({ sev, area, msg, ...extra })
+  const cl = trades.filter(isClosed)
+  const badDate = cl.filter(t => !isRealFecha(t.fecha) || isFutureFecha(t.fecha))
+  if (badDate.length) add('error', 'trades', `${badDate.length} trade(s) con fecha inválida o futura.`, { ids: badDate.map(t => t.id) })
+  const noRisk = cl.filter(t => riskOf(t) <= 0)
+  if (noRisk.length) add('error', 'trades', `${noRisk.length} trade(s) sin riesgo: no entran en las métricas en R.`, { ids: noRisk.map(t => t.id) })
+  const lossBad = cl.filter(t => t.resultado === 'Loss' && riskOf(t) > 0 && Math.abs((t.r_pnl || 0) + riskOf(t)) > 0.01)
+  if (lossBad.length) add('error', 'trades', `${lossBad.length} pérdida(s) cuyo P&L no coincide con el riesgo.`, { ids: lossBad.map(t => t.id) })
+  const winBad = cl.filter(t => t.resultado === 'Win' && riskOf(t) > 0 && Math.abs((t.r_pnl || 0) - riskOf(t) * (t.rr_real || t.rr || 0)) > 0.02)
+  if (winBad.length) add('error', 'trades', `${winBad.length} ganancia(s) cuyo P&L no coincide con riesgo × R:R real.`, { ids: winBad.map(t => t.id) })
+  const beBad = cl.filter(t => t.resultado === 'Breakeven' && Math.abs(t.r_pnl || 0) > 0.001)
+  if (beBad.length) add('warn', 'trades', `${beBad.length} breakeven con P&L distinto de 0.`, { ids: beBad.map(t => t.id) })
+  const orphan = cl.filter(t => !accIds.has(String(t.cid)))
+  if (orphan.length) add('error', 'trades', `${orphan.length} trade(s) de una cuenta que ya no existe.`, { ids: orphan.map(t => t.id) })
+  const seen = new Map(); let dups = 0
+  cl.forEach(t => { const k = [t.fecha, t.cid, t.risk, t.resultado, t.r_pnl, t.rr_real, t.direccion, t.tmp].join('|'); if (seen.has(k)) dups++; else seen.set(k, 1) })
+  if (dups) add('warn', 'trades', `${dups} trade(s) idéntico(s) a otro (posible duplicado). Si operaste el mismo setup en una cuenta dos veces, ignorá este aviso.`)
+  const noPlan = cl.filter(t => !t.plan || t.plan === '—').length
+  if (noPlan) add('info', 'trades', `${noPlan} trade(s) sin plan asignado.`)
+  const noDir = cl.filter(t => !t.direccion || t.direccion === '—').length
+  if (noDir) add('info', 'trades', `${noDir} trade(s) sin dirección (compra/venta). Afecta el agrupado por setup.`)
+  accounts.forEach(a => {
+    if (!(a.capital > 0)) add('error', 'cuentas', `La cuenta ${a.nombre} no tiene capital cargado.`)
+  })
+  const ledger = calcFundedLedger(trades, accounts, withdrawals)
+  Object.entries(withdrawals).forEach(([accId, list]) => {
+    const a = accounts.find(x => String(x.id) === accId)
+    list.forEach(w => {
+      if (!a) { add('error', 'retiros', `Retiro del ${w.fecha} en una cuenta que ya no existe.`, { wid: w.id }); return }
+      if (!isRealFecha(w.fecha) || isFutureFecha(w.fecha)) add('error', 'retiros', `Retiro de ${a.nombre}: fecha inválida o futura (${w.fecha}).`, { wid: w.id })
+      if (!(w.usd > 0)) add('error', 'retiros', `Retiro de ${a.nombre} del ${w.fecha}: monto vacío o 0.`, { wid: w.id })
+      const expected = a.capital > 0 ? (w.usd || 0) / a.capital * 100 : 0
+      if (a.capital > 0 && Math.abs((w.pct || 0) - expected) > 0.1)
+        add('warn', 'retiros', `Retiro de ${a.nombre} del ${w.fecha}: el % guardado (${(w.pct || 0).toFixed(2)}%) no coincide con monto/capital (${expected.toFixed(2)}%).`, { wid: w.id, fixPct: parseFloat(expected.toFixed(3)) })
+    })
+  })
+  ledger.rows.filter(r => r.sobrecobrado).forEach(r => add('warn', 'retiros', `${r.a.nombre}: cobraste $${r.cobrado} y tu parte según los trades es $${r.miParte}. Revisá trades o retiros.`))
+  return issues
+}
