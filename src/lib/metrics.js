@@ -733,10 +733,7 @@ export function auditData(trades, accounts, withdrawals) {
   if (beBad.length) add('warn', 'trades', `${beBad.length} breakeven con P&L distinto de 0.`, { ids: beBad.map(t => t.id) })
   const orphan = cl.filter(t => !accIds.has(String(t.cid)))
   if (orphan.length) add('error', 'trades', `${orphan.length} trade(s) de una cuenta que ya no existe.`, { ids: orphan.map(t => t.id) })
-  const seen = new Map(); let dups = 0
-  // Solo se comparan trades con dirección cargada: sin ella, dos trades distintos del mismo día se parecen demasiado.
-  cl.filter(t => t.direccion && t.direccion !== '—').forEach(t => { const k = [t.fecha, t.cid, t.risk, t.resultado, t.r_pnl, t.rr_real, t.direccion, t.tmp].join('|'); if (seen.has(k)) dups++; else seen.set(k, 1) })
-  if (dups) add('warn', 'trades', `${dups} trade(s) idéntico(s) a otro (posible duplicado). Si operaste el mismo setup en una cuenta dos veces, ignorá este aviso.`)
+  // (Sin control de duplicados: reintentar el mismo setup en la misma cuenta tras un SL produce trades idénticos legítimos; la importación ya evita duplicados.)
   const noPlan = cl.filter(t => !t.plan || t.plan === '—').length
   if (noPlan) add('info', 'trades', `${noPlan} trade(s) sin plan asignado.`)
   const noDir = cl.filter(t => !t.direccion || t.direccion === '—').length
