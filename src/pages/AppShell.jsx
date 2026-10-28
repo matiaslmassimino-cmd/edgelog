@@ -21,13 +21,13 @@ const NAV = [
   ]},
   { group: 'Gestión', items: [
     { id: 'cuentas', icon: '⚡', label: 'Mis cuentas' },
-    { id: 'fondeadas', icon: '$', label: 'Fondeadas' },
+    { id: 'fondeadas', icon: '$', label: 'Retiros y fondeo' },
     { id: 'calc', icon: '◇', label: 'Calculadora' },
   ]},
   { group: 'Análisis', items: [
     { id: 'historial', icon: '▸', label: 'Historial' },
-    { id: 'periodos', icon: '◫', label: 'Analytics' },
-    { id: 'rendimiento', icon: '◉', label: 'Rendimiento' },
+    { id: 'periodos', icon: '◫', label: 'Rendimiento general' },
+    { id: 'rendimiento', icon: '◉', label: 'Rendimiento fondeadas' },
   ]},
   { group: 'Mostrar', items: [
     { id: 'track', icon: '▣', label: 'Track Record' },

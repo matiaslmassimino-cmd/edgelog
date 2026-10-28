@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { fetchPublicDataBySlug } from '../lib/sync'
-import { calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcExpectancyCI, calcExecutionSplit, fmtR, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
+import { calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcExpectancyCI, calcExecutionSplit, fmtR, calcMaxDD, calcFundedSummary, calcEvaluationStats, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 
 const tip = { background: '#0F1828', border: '1px solid #1E3A5F', borderRadius: 10, fontSize: 11, color: '#E2E8F0', padding: '10px 14px' }
@@ -152,8 +152,8 @@ function PeriodExplorer({ trades }) {
         </div>
       )}
 
-      {/* Gráfico interactivo */}
-      <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, padding: '16px 20px', marginBottom: 14 }}>
+      {/* Gráfico del período seleccionado (sin período elegido sería idéntico a la equity curve principal) */}
+      {selectedKey && <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, padding: '16px 20px', marginBottom: 14 }}>
         <div style={{ fontSize: 10, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.12em', fontWeight: 600, marginBottom: 12 }}>
           P&L acumulado — {selectedKey ? keyLabel(selectedKey, tab) : 'Todos los períodos'}
         </div>
@@ -172,7 +172,7 @@ function PeriodExplorer({ trades }) {
             <Area type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2.5} fill="url(#pnlGradPer)" dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#0B0F17', strokeWidth: 2 }} />
           </AreaChart>
         </ResponsiveContainer>
-      </div>
+      </div>}
 
       {/* Lista de períodos clickeable */}
       <div style={{ fontSize: 10, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.12em', fontWeight: 600, marginBottom: 8 }}>
@@ -265,7 +265,11 @@ export default function Public() {
   const cons = calcConsistency(trades)
   const streaks = calcStreaks(trades)
   const aum = calcAUM(accounts, trades, {})
-  const equityData = buildEquityCurve(trades)
+  const equityData = buildEquityCurve(trades, 'R')
+  const funded = calcFundedSummary(trades, accounts)
+  const fundedCurve = buildEquityCurve(funded.trades, 'R')
+  const evals = calcEvaluationStats(accounts)
+  const ddR = calcMaxDD(trades, 'R'), ddPct = calcMaxDD(trades)
   const split = calcExecutionSplit(trades)
   const dateStr = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
   const dates = trades.map(e => e.fecha).filter(Boolean).sort()
@@ -292,7 +296,7 @@ export default function Public() {
   const monthlyData = Object.keys(monthMap).sort().map(k => {
     const g2 = calcMetrics(monthMap[k])
     const mn = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
-    return { name: mn[parseInt(k.split('-')[1]) - 1], pnl: parseFloat(g2.pnl.toFixed(2)) }
+    return { name: mn[parseInt(k.split('-')[1]) - 1], pnl: parseFloat(g2.rSum.toFixed(1)) }
   })
 
   const heatmapTrades = [...trades]
@@ -352,6 +356,9 @@ export default function Public() {
               </div>
             ))}
           </div>
+          <div style={{ marginTop: 14, fontSize: 11, color: '#4A6080', maxWidth: 640, lineHeight: 1.6 }}>
+            <b style={{ color: '#60A5FA' }}>¿Qué es R?</b> Es la unidad de riesgo: 1R es lo que se arriesga en cada operación. Un trade que pierde es −1R; uno que gana el doble de lo arriesgado es +2R. Permite comparar operaciones con distinto riesgo y cuentas de distinto tamaño.
+          </div>
           {profile.bio && (
             <div style={{ marginTop: 20, padding: '12px 16px', background: 'rgba(255,255,255,.04)', borderRadius: 10, borderLeft: '3px solid #3B82F6', fontSize: 13, color: '#94A3B8', lineHeight: 1.7, maxWidth: 680 }}>{profile.bio}</div>
           )}
@@ -362,7 +369,7 @@ export default function Public() {
       <div className="pub-content" style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 60px 80px' }}>
 
         {/* Equity curve */}
-        <SectionTitle sub="Suma acumulada del resultado de todas las cuentas (en % de cada cuenta), desde el primer trade. No equivale al retorno de un capital único.">Equity Curve</SectionTitle>
+        <SectionTitle sub="Resultado acumulado en R (1R = el riesgo de cada trade), sumando todas las cuentas desde el primer trade. No equivale al retorno de un capital único.">Equity Curve</SectionTitle>
         <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, padding: '16px 20px', marginBottom: 8 }}>
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={equityData}>
@@ -374,8 +381,8 @@ export default function Public() {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.03)" />
               <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-              <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + '%'} />
-              <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'P&L acum.']} labelStyle={{ color: '#60A5FA', fontWeight: 600 }} />
+              <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + 'R'} />
+              <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + 'R', 'P&L acum.']} labelStyle={{ color: '#60A5FA', fontWeight: 600 }} />
               <Area type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2.5} fill="url(#pnlGradMain)" dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#0B0F17', strokeWidth: 2 }} />
             </AreaChart>
           </ResponsiveContainer>
@@ -385,6 +392,40 @@ export default function Public() {
           <span>🟡 {trades.filter(t => t.resultado === 'Breakeven').length} breakeven</span>
           <span>📅 {spanDays} días</span>
         </div>
+
+        {/* ── CUENTAS FONDEADAS ── */}
+        {funded.n > 0 && (<>
+          <SectionTitle sub="Rendimiento de las operaciones realizadas en cuentas fondeadas (capital de la firma).">Cuentas fondeadas</SectionTitle>
+          <div style={{ background: 'linear-gradient(135deg, #1A1400, #111827)', border: '1px solid #92400E', borderRadius: 16, padding: '20px 22px', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
+              <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 38, color: '#FBBF24', lineHeight: 1 }}>${funded.capital.toLocaleString('es-AR')}</div>
+              <div style={{ fontSize: 12, color: '#94A3B8' }}>en {funded.accounts} cuentas fondeadas activas · {funded.n} operaciones · P&L bruto <b style={{ color: funded.usd >= 0 ? '#22C55E' : '#EF4444' }}>{funded.usd >= 0 ? '+' : ''}${funded.usd.toLocaleString('es-AR')}</b></div>
+            </div>
+            <div className="pub-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
+              <StatCard label="R acumulado" value={fmtR(funded.m.rSum)} color={funded.m.rSum >= 0 ? '#22C55E' : '#EF4444'} sub={`${funded.m.w}W · ${funded.m.l}L · ${funded.m.be} BE`} desc="Suma del resultado de todas las operaciones en cuentas fondeadas, medido en R." />
+              <StatCard label="Expectativa" value={fmtR(funded.m.avgR, 2)} color={funded.m.avgR > 0 ? '#22C55E' : '#EF4444'} sub="por trade" desc="Resultado promedio por operación en cuentas fondeadas." />
+              <StatCard label="Win rate" value={funded.m.wr !== null ? funded.m.wr + '%' : '—'} color={funded.m.wr >= 50 ? '#22C55E' : '#F59E0B'} sub="sin contar breakeven" desc="Porcentaje de operaciones ganadoras sobre ganadoras más perdedoras." />
+              <StatCard label="Profit factor" value={funded.m.pf !== null ? funded.m.pf.toFixed(2) : '—'} color={funded.m.pf >= 1.5 ? '#22C55E' : '#F59E0B'} sub="en R" desc="R ganado dividido por R perdido." />
+            </div>
+            <ResponsiveContainer width="100%" height={150}>
+              <AreaChart data={fundedCurve}>
+                <defs>
+                  <linearGradient id="pnlGradFund" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#FBBF24" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#FBBF24" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + 'R'} />
+                <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + 'R', 'Fondeadas']} labelStyle={{ color: '#FBBF24', fontWeight: 600 }} />
+                <Area type="monotone" dataKey="pnl" stroke="#FBBF24" strokeWidth={2.2} fill="url(#pnlGradFund)" dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+            <div style={{ fontSize: 10.5, color: '#92400E', marginTop: 8 }}>
+              Evaluaciones: {evals.passed} fases aprobadas · {evals.lost} perdidas · {evals.running} en curso{evals.rate !== null ? ` (${evals.rate}% de aprobación)` : ''}.
+            </div>
+          </div>
+        </>)}
 
         {/* ── EXPLORADOR DE PERÍODOS ── */}
         <SectionTitle sub="Explorá el rendimiento por semana, mes o año. Hacé clic en cualquier período para ver su detalle e historia.">
@@ -400,6 +441,8 @@ export default function Public() {
           <StatCard label="WR Disciplinado ✦" value={gQ.wr !== null ? gQ.wr + '%' : '—'} color="#EAB308" sub={`${qTrades.length} trades con plan exacto`} desc="Win rate calculado solo sobre operaciones con el plan ejecutado al 100%. Los trades 'Parcialmente' no cuentan como disciplinados." />
           <StatCard label="R:R Real Promedio" value={g.avgRR !== null ? '1:' + g.avgRR.toFixed(2) : '—'} color={g.avgRR >= 2 ? '#22C55E' : '#F59E0B'} sub="sobre trades ganadores" desc="Risk:Reward real promedio en operaciones exitosas. Un R:R de 1:2 significa que gana el doble de lo que arriesga." />
           <StatCard label="Expectancy por Trade" value={exp !== null ? (exp > 0 ? '+' : '') + exp + 'R' : '—'} color={exp > 0 ? '#22C55E' : '#EF4444'} sub={exp > 0 ? 'Edge positivo' : 'Sin edge'} desc="Ganancia o pérdida promedio esperada por operación. Si es positiva, el sistema tiene ventaja estadística y es rentable a largo plazo." />
+          <StatCard label="Drawdown máximo" value={ddR + 'R'} color={ddPct >= 8 ? '#EF4444' : '#F59E0B'} sub={`${ddPct}% de cuenta · peor cuenta`} desc="Mayor caída desde un máximo, medida cuenta por cuenta sobre el cierre de cada día. Se muestra la peor de todas las cuentas." />
+          <StatCard label="Racha perdedora máx." value={String(streaks.maxL)} color="#F59E0B" sub="trades seguidos (sin contar BE)" desc="Mayor cantidad de operaciones perdedoras consecutivas, sumando todas las cuentas. Los breakeven no cortan la racha." />
           <StatCard label="Consistencia mensual" value={cons.pct !== null ? cons.pct + '%' : '—'} color={cons.pct >= 70 ? '#22C55E' : '#F59E0B'} sub={`${cons.months.filter(m => m.positive).length}/${cons.months.length} meses positivos`} desc="Porcentaje de meses cerrados en positivo. Una consistencia alta (+70%) indica resultados estables mes a mes." />
         </div>
 
@@ -449,13 +492,13 @@ export default function Public() {
         </div>
 
         {/* P&L mensual */}
-        <SectionTitle sub="Resultado neto de cada mes.">Resultados mensuales</SectionTitle>
+        <SectionTitle sub="Resultado neto de cada mes, en R.">Resultados mensuales</SectionTitle>
         <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, padding: '16px 20px', marginBottom: 6 }}>
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={monthlyData}>
               <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + '%'} />
-              <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'P&L mensual']} />
+              <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + 'R'} />
+              <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + 'R', 'Resultado mensual']} />
               <Bar dataKey="pnl" radius={[5, 5, 0, 0]}>
                 {monthlyData.map((entry, i) => <Cell key={i} fill={entry.pnl >= 0 ? '#22C55E' : '#EF4444'} fillOpacity={0.85} />)}
               </Bar>

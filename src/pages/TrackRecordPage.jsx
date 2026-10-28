@@ -1,5 +1,5 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { calcMetrics, isQuality, calcExecutionSplit, fmtR, calcSharpe, calcSortino, calcCalmar, calcEdgeRatio, calcDynamicGoals, calcAUM, buildEquityCurve, calcDirectionStats } from '../lib/metrics'
+import { calcMetrics, isQuality, calcExecutionSplit, fmtR, calcMaxDD, calcDynamicGoals, calcAUM, buildEquityCurve, calcDirectionStats } from '../lib/metrics'
 
 const tip = { background: '#1A2235', border: '1px solid #2A3A52', borderRadius: 8, fontSize: 11, color: '#E2E8F0' }
 
@@ -8,10 +8,7 @@ export default function TrackRecordPage({ ctx }) {
   const g = calcMetrics(trades)
   const qTrades = trades.filter(isQuality)
   const gQ = calcMetrics(qTrades)
-  const sharpe = calcSharpe(trades)
-  const sortino = calcSortino(trades)
-  const calmar = calcCalmar(trades)
-  const edge = calcEdgeRatio(trades)
+  const ddR = calcMaxDD(trades, 'R')
   const goals = calcDynamicGoals(trades)
   const aum = calcAUM(accounts, trades, withdrawals)
   const equityData = buildEquityCurve(trades)
@@ -92,11 +89,11 @@ export default function TrackRecordPage({ ctx }) {
         <div className="exec-grid">
           {[
             { v: g.avgRR !== null ? '1:' + g.avgRR.toFixed(1) : '—', l: 'R:R real promedio' },
-            { v: sharpe !== null ? sharpe : '—', l: 'Sharpe ratio' },
-            { v: sortino !== null ? sortino : '—', l: 'Sortino ratio' },
-            { v: calmar !== null ? calmar : '—', l: 'Calmar ratio' },
+            { v: g.avgR !== null ? fmtR(g.avgR, 2) : '—', l: 'Expectativa por trade' },
+            { v: g.pf !== null ? g.pf.toFixed(2) : '—', l: 'Profit factor (R)' },
+            { v: ddR + 'R', l: 'Drawdown máx. (peor cuenta)' },
             { v: gQ.wr !== null ? gQ.wr + '%' : '—', l: 'WR con disciplina' },
-            { v: edge !== null ? edge + '%' : '—', l: 'Edge ratio' },
+            { v: fmtR(g.rSum), l: 'R acumulado' },
             { v: accounts.filter(a => a.status === 'completed').length, l: 'Fases completadas' },
             { v: accounts.filter(a => a.type === 'funded').length, l: 'Cuentas fondeadas' },
           ].map(({ v, l }) => (

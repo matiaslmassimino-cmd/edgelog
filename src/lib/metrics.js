@@ -148,6 +148,75 @@ export function calcExecutionSplit(trades) {
 }
 export const fmtR = (v, d = 1) => v === null || v === undefined ? '—' : (v >= 0 ? '+' : '') + Number(v).toFixed(d) + 'R'
 
+// ── Resumen de cuentas fondeadas (lo que más importa: capital real y su rendimiento) ──
+export function calcFundedSummary(trades, accounts) {
+  const fundedAccs = accounts.filter(a => a.type === 'funded')
+  const ids = new Set(fundedAccs.map(a => String(a.id)))
+  const ft = trades.filter(t => isClosed(t) && (ids.has(String(t.cid)) || t.c_tipo === 'funded'))
+  const m = calcMetrics(ft)
+  const live = fundedAccs.filter(a => !['completed', 'closed', 'perdida'].includes(a.status))
+  // P&L en USD bruto por cuenta = % acumulado × capital de esa cuenta
+  const usd = fundedAccs.reduce((s, a) => {
+    const pct = ft.filter(t => String(t.cid) === String(a.id)).reduce((x, t) => x + (t.r_pnl || 0), 0)
+    return s + pct / 100 * (a.capital || 0)
+  }, 0)
+  const exact = calcMetrics(ft.filter(isQuality))
+  return { m, n: ft.length, accounts: live.length, capital: live.reduce((s, a) => s + (a.capital || 0), 0), usd: parseFloat(usd.toFixed(0)), exact, trades: ft }
+}
+
+// Fases de evaluación: aprobadas / perdidas / en curso
+export function calcEvaluationStats(accounts) {
+  const ch = accounts.filter(a => a.type === 'challenge')
+  const passed = ch.filter(a => a.status === 'completed').length
+  const lost = ch.filter(a => a.status === 'perdida').length
+  const running = ch.filter(a => !['completed', 'closed', 'perdida'].includes(a.status)).length
+  return { passed, lost, running, rate: passed + lost > 0 ? Math.round(passed / (passed + lost) * 100) : null }
+}
+
+// Rendimiento histórico según el orden del trade dentro del día (1º, 2º, 3º, 4º o más)
+export function calcNthTradeStats(trades) {
+  const td = tradeOfDayMap(trades)
+  const out = {}
+  groupStats(trades, t => Math.min(td.get(t.id) || 1, 4)).forEach(g => { out[g.key] = g })
+  return out
+}
+
+// Rendimiento histórico por riesgo usado en el trade
+export function calcRiskBucket(trades, minRisk) {
+  return calcMetrics(trades.filter(t => isClosed(t) && riskOf(t) >= minRisk))
+}
+
+// Estado de disciplina de un día (semáforo y Diario).
+// Solo afirma lo que los datos sostienen: el orden dentro de un día histórico NO se conserva
+// con certeza, así que no se citan cifras del 2º/3º trade; sí del "4º trade o más", que es
+// negativo en cualquier orden posible. Las reglas de corte (2 pérdidas) son una regla estándar
+// de gestión de riesgo, no una conclusión estadística.
+export function calcDayStatus(trades, fecha) {
+  const day = sortTrades(trades.filter(t => isClosed(t) && t.fecha === fecha))
+  const losses = day.filter(t => t.resultado === 'Loss').length
+  const last = day.length ? day[day.length - 1] : null
+  const rToday = parseFloat(day.reduce((s, t) => s + rOf(t), 0).toFixed(2))
+  const nth = calcNthTradeStats(trades)
+  const nextN = day.length + 1
+  const late = nth[4]
+  let level = 'ok', msg = day.length ? `${day.length} trade${day.length > 1 ? 's' : ''} hoy · ${fmtR(rToday, 1)}.` : 'Sin trades hoy. Operá solo el setup completo.'
+  if (last && last.resultado === 'Loss') {
+    level = 'warn'
+    msg = 'Tu último trade de hoy fue pérdida. Antes del próximo, confirmá que el setup sea 100% exacto.'
+  }
+  if (day.length >= 3) {
+    level = 'warn'
+    msg = `Llevás ${day.length} trades hoy. El 4º trade del día o más rinde ${fmtR(late?.avgR, 2)} por trade en tus datos (${late?.n || 0} trades).`
+  }
+  if (losses >= 2 || day.length >= 4) {
+    level = 'stop'
+    msg = losses >= 2
+      ? `${losses} pérdidas hoy (${fmtR(rToday, 1)}). Regla de corte: cerrá la sesión, no hay nada que recuperar.`
+      : `Ya hiciste ${day.length} trades hoy. En tus datos, del 4º en adelante el resultado es ${fmtR(late?.avgR, 2)} por trade.`
+  }
+  return { n: day.length, losses, rToday, level, msg, nextN, late }
+}
+
 export function calcPlanBreakdown(trades) {
   const rows = [
     { key: '100% exacto', label: 'Plan exacto' },
