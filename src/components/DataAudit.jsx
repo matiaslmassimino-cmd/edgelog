@@ -6,7 +6,7 @@ const LBL = { error: 'Corregir', warn: 'Revisar', info: 'Info' }
 
 // Panel de calidad de datos: muestra cargas que distorsionan las métricas y permite corregir los % de retiros.
 export default function DataAudit({ ctx, areas = null, title = 'Calidad de los datos' }) {
-  const { trades, accounts, withdrawals, editWithdrawal, toast } = ctx
+  const { allTrades: trades, allAccounts: accounts, withdrawals, editWithdrawal, toast } = ctx
   const [busy, setBusy] = useState(false)
   const all = auditData(trades, accounts, withdrawals)
   const issues = areas ? all.filter(i => areas.includes(i.area)) : all

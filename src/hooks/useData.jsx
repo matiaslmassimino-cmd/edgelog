@@ -5,10 +5,11 @@ import {
   saveWithdrawal, deleteWithdrawal, updateWithdrawal, saveRule, deleteRule, saveProfile,
   bulkMigrate, bulkImportCSV, updateTrade, deleteTrade, exportToCSV
 } from '../lib/sync'
+import { splitPersonal } from '../lib/metrics'
 
 export default function useData(userId) {
-  const [trades, setTrades] = useState([])
-  const [accounts, setAccounts] = useState([])
+  const [allTrades, setTrades] = useState([])
+  const [allAccounts, setAccounts] = useState([])
   const [withdrawals, setWithdrawals] = useState({})
   const [rules, setRules] = useState([])
   const [profile, setProfile] = useState({})
@@ -44,15 +45,19 @@ export default function useData(userId) {
   const updateProfile = async (p) => { await saveProfile(userId, p); await reload() }
 
   const importCSV = async (csvText) => {
-    const result = await bulkImportCSV(userId, csvText, accounts)
+    const result = await bulkImportCSV(userId, csvText, allAccounts)
     await reload()
     return result
   }
 
-  const exportCSV = () => exportToCSV(trades)
+  const exportCSV = () => exportToCSV(allTrades)
+
+  // Las cuentas personales (dinero propio) quedan fuera de las métricas de firmas: `trades` y `accounts`
+  // son solo de prop firms; `allTrades`/`allAccounts`/`personal*` incluyen la cuenta propia.
+  const { firmTrades: trades, firmAccounts: accounts, personalTrades, personalAccounts } = splitPersonal(allTrades, allAccounts)
 
   return {
-    trades, accounts, withdrawals, rules, profile,
+    trades, accounts, allTrades, allAccounts, personalTrades, personalAccounts, withdrawals, rules, profile,
     loading, dataExists, reload,
     addTrade, removeTrade, editTrade,
     addAccount, removeAccount, setAccStatus,

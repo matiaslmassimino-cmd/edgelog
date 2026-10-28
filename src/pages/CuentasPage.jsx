@@ -11,7 +11,7 @@ const STATUS = {
 const EMPTY = { type: 'challenge', nombre: '', firma: 'Alpha Capital Group', fase: 'Fase 1', capital: 10000, objetivo: 8, dd: 8, split: '80/20', nota: '', status: 'active' }
 
 export default function CuentasPage({ ctx }) {
-  const { accounts, trades, withdrawals, addAccount, removeAccount, setAccStatus, toast } = ctx
+  const { allAccounts: accounts, allTrades: trades, withdrawals, addAccount, removeAccount, setAccStatus, toast } = ctx
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
@@ -45,11 +45,13 @@ export default function CuentasPage({ ctx }) {
 
   const challenges = showing.filter(a => a.type === 'challenge')
   const funded = showing.filter(a => a.type === 'funded')
+  const personal = showing.filter(a => a.type === 'personal')
 
   function AccCard({ a }) {
     const te = trades.filter(e => String(e.cid) === String(a.id))
     const g = calcMetrics(te)
     const isF = a.type === 'funded'
+    const isP = a.type === 'personal'
     const pnlCur = isF ? pnlSinceLastWD(a.id, trades, withdrawals) : g.pnl
     const pnlHist = isF ? pnlTotal(a.id, trades) : g.pnl
     const cap = a.capital || 0
@@ -66,14 +68,14 @@ export default function CuentasPage({ ctx }) {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-            <div style={{ width: 3, height: 34, borderRadius: 3, background: isF ? 'var(--gold)' : 'var(--accent)', flexShrink: 0, marginTop: 3 }} />
+            <div style={{ width: 3, height: 34, borderRadius: 3, background: isP ? 'var(--green)' : isF ? 'var(--gold)' : 'var(--accent)', flexShrink: 0, marginTop: 3 }} />
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
                 <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 17, color: 'var(--text)' }}>{a.nombre}</span>
                 <span style={{ padding: '2px 7px', borderRadius: 4, background: st.bg, color: st.color, border: `1px solid ${st.border}`, fontSize: 9.5, fontWeight: 600 }}>{st.label}</span>
-                <span style={{ padding: '2px 7px', borderRadius: 4, background: isF ? 'var(--gold-bg)' : 'var(--amber-bg)', color: isF ? 'var(--gold)' : 'var(--amber)', border: `1px solid ${isF ? 'var(--gold-border)' : 'var(--amber-border)'}`, fontSize: 9.5, fontWeight: 600 }}>{isF ? 'Fondeada' : a.fase || 'Challenge'}</span>
+                <span style={{ padding: '2px 7px', borderRadius: 4, background: isF ? 'var(--gold-bg)' : 'var(--amber-bg)', color: isF ? 'var(--gold)' : 'var(--amber)', border: `1px solid ${isF ? 'var(--gold-border)' : 'var(--amber-border)'}`, fontSize: 9.5, fontWeight: 600 }}>{isP ? 'Capital propio' : isF ? 'Fondeada' : a.fase || 'Challenge'}</span>
               </div>
-              <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{a.firma} · ${cap.toLocaleString()} · {isF ? `Split ${a.split}` : `Obj ${a.objetivo}%`} · DD máx {a.dd}%</div>
+              <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{isP ? `${a.firma} · capital inicial $${cap.toLocaleString()}${a.nota ? ' · Myfxbook vinculado' : ''}` : `${a.firma} · $${cap.toLocaleString()} · ${isF ? `Split ${a.split}` : `Obj ${a.objetivo}%`} · DD máx ${a.dd}%`}</div>
               {(parent || child) && (
                 <div style={{ fontSize: 10, color: 'var(--accent2)', marginTop: 3, fontWeight: 500 }}>
                   {parent && <span>← {parent.nombre}</span>}{parent && child && ' → '}{!parent && child && '→ '}{child && <span>{child.nombre}</span>}
@@ -89,13 +91,13 @@ export default function CuentasPage({ ctx }) {
         </div>
 
         {/* Barra de progreso */}
-        <div style={{ marginBottom: 12 }}>
+        {!isP && <div style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, color: 'var(--text3)', marginBottom: 3 }}>
             <span>Progreso al objetivo ({obj}%)</span>
             <span style={{ fontWeight: 600 }}>{barPct.toFixed(0)}%</span>
           </div>
           <div className="pb"><div className="pf" style={{ width: `${barPct}%`, background: pnlCur >= 0 ? 'var(--green)' : 'var(--red)' }} /></div>
-        </div>
+        </div>}
 
         {/* Acciones */}
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
@@ -153,21 +155,23 @@ export default function CuentasPage({ ctx }) {
             <div className="fg"><label className="fl">Número</label><input className="fi" value={form.nombre} onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))} placeholder="2815389" /></div>
             <div className="fg"><label className="fl">Firma</label><input className="fi" value={form.firma} onChange={e => setForm(p => ({ ...p, firma: e.target.value }))} /></div>
             <div className="fg"><label className="fl">Tipo</label>
-              <select className="fi" value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}>
+              <select className="fi" value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value, ...(e.target.value === 'personal' ? { firma: '', fase: '', objetivo: 0, dd: 0, split: '', capital: 100 } : e.target.value === 'funded' ? { firma: 'Alpha Capital Group' } : {}) }))}>
                 <option value="challenge">Challenge</option>
                 <option value="funded">Fondeada</option>
+                <option value="personal">Capital propio (cuenta real)</option>
               </select>
             </div>
           </div>
           <div className="g3">
-            <div className="fg"><label className="fl">Fase</label><input className="fi" value={form.fase} onChange={e => setForm(p => ({ ...p, fase: e.target.value }))} /></div>
+            {form.type === 'personal' && <div style={{ gridColumn: '1 / -1', fontSize: 12, color: 'var(--text3)', lineHeight: 1.6, marginBottom: 8 }}>Cuenta real con tu dinero: no cuenta en las métricas de challenges ni fondeadas; tiene su propia sección. Capital = depósito inicial; "Número" = tu nº de cuenta; "Firma" = tu broker.</div>}
+          <div className="fg"><label className="fl">Fase</label><input className="fi" value={form.fase} onChange={e => setForm(p => ({ ...p, fase: e.target.value }))} /></div>
             <div className="fg"><label className="fl">Capital ($)</label><input className="fi" type="number" value={form.capital} onChange={e => setForm(p => ({ ...p, capital: parseInt(e.target.value) || 10000 }))}/></div>
             <div className="fg"><label className="fl">DD máx (%)</label><input className="fi" type="number" value={form.dd} onChange={e => setForm(p => ({ ...p, dd: parseFloat(e.target.value) || 8 }))}/></div>
           </div>
           <div className="g3">
             <div className="fg"><label className="fl">Objetivo (%)</label><input className="fi" type="number" value={form.objetivo} onChange={e => setForm(p => ({ ...p, objetivo: parseFloat(e.target.value) || 8 }))}/></div>
             <div className="fg"><label className="fl">Split (fondeadas)</label><input className="fi" value={form.split} onChange={e => setForm(p => ({ ...p, split: e.target.value }))} placeholder="80/20" /></div>
-            <div className="fg"><label className="fl">Nota</label><input className="fi" value={form.nota} onChange={e => setForm(p => ({ ...p, nota: e.target.value }))} placeholder="Opcional..." /></div>
+            <div className="fg"><label className="fl">{form.type === 'personal' ? 'Enlace Myfxbook (se muestra en la página pública)' : 'Nota'}</label><input className="fi" value={form.nota} onChange={e => setForm(p => ({ ...p, nota: e.target.value }))} placeholder={form.type === 'personal' ? 'https://www.myfxbook.com/members/...' : 'Opcional...'} /></div>
           </div>
           <button className="btn btn-main" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : 'Guardar cuenta'}</button>
         </div>
@@ -181,6 +185,7 @@ export default function CuentasPage({ ctx }) {
         </div>
       ) : (
         <>
+          {personal.length > 0 && <><div className="quality-sep">◉ Capital propio</div>{personal.map(a => <AccCard key={a.id} a={a} />)}</>}
           {funded.length > 0 && <><div className="quality-sep">◆ Fondeadas</div>{funded.map(a => <AccCard key={a.id} a={a} />)}</>}
           {challenges.length > 0 && <><div className="quality-sep">⚡ Challenges</div>{challenges.map(a => <AccCard key={a.id} a={a} />)}</>}
         </>

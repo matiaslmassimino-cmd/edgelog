@@ -13,6 +13,7 @@ import TrackRecordPage from './TrackRecordPage'
 import ReglasPage from './ReglasPage'
 import AjustesPage from './AjustesPage'
 import RendimientoPage from './RendimientoPage'
+import CapitalPropioPage from './CapitalPropioPage'
 
 const NAV = [
   { group: null, items: [
@@ -28,6 +29,7 @@ const NAV = [
     { id: 'historial', icon: '▸', label: 'Historial' },
     { id: 'periodos', icon: '◫', label: 'Rendimiento general' },
     { id: 'rendimiento', icon: '◉', label: 'Rendimiento fondeadas' },
+    { id: 'propio', icon: '◎', label: 'Capital propio' },
   ]},
   { group: 'Mostrar', items: [
     { id: 'track', icon: '▣', label: 'Track Record' },
@@ -108,6 +110,7 @@ export default function AppShell({ session }) {
         {active === 'historial'   && <HistorialPage ctx={ctx} />}
         {active === 'periodos'    && <PeriodosPage ctx={ctx} />}
         {active === 'rendimiento' && <RendimientoPage ctx={ctx} />}
+        {active === 'propio' && <CapitalPropioPage ctx={ctx} />}
         {active === 'track'       && <TrackRecordPage ctx={ctx} />}
         {active === 'reglas'      && <ReglasPage ctx={ctx} />}
         {active === 'ajustes'     && <AjustesPage ctx={ctx} />}
