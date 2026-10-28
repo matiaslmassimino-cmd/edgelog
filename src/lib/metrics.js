@@ -40,23 +40,53 @@ export function keyLabel(k, tab) {
   return k
 }
 
+// ─────────────────────────────────────────────────────────────
+// DEFINICIONES DE MEDICIÓN (única fuente de verdad)
+//
+//  • Trade cerrado: resultado Win, Loss o Breakeven.
+//  • R de un trade = r_pnl / riesgo, ambos en % de cuenta. Normaliza por el
+//    riesgo usado: un trade al 3% no pesa más que uno al 1%.
+//  • Win rate = Win / (Win + Loss). Los Breakeven NO entran en el
+//    denominador; se informan aparte (campo `be`).
+//  • Profit factor (pf) = suma de R ganados / suma de R perdidos.
+//    `pfPct` es la versión sobre % de cuenta, solo por compatibilidad.
+//  • Expectativa (avgR) = R medio por trade cerrado, con Breakeven incluidos.
+//  • Disciplinado = plan exactamente '100% exacto'. "Parcialmente" NO lo es.
+//    Emoción y sobreoperación se analizan como dimensiones aparte.
+// ─────────────────────────────────────────────────────────────
+const CLOSED = ['Win', 'Loss', 'Breakeven']
+
+export function isClosed(e) { return CLOSED.includes(e.resultado) }
+
 export function isQuality(e) {
-  const plan = e.plan || ''
-  const emo = e.emo || ''
-  const sob = e.sob || ''
-  const opero = e.opero || ''
-  return (
-    (plan === '100% exacto' || plan === 'Parcialmente') &&
-    emo === 'Calmo' &&
-    sob !== 'Sí, cedí' &&
-    opero !== 'Sobreoperé'
-  )
+  return (e.plan || '') === '100% exacto'
+}
+export const isDisciplined = isQuality
+
+export function riskOf(e) {
+  const rp = Number(e.rp)
+  if (rp > 0) return rp
+  const parsed = parseFloat(String(e.risk || '').replace('%', '').replace(',', '.'))
+  return parsed > 0 ? parsed : 0
+}
+
+export function rOf(e) {
+  const risk = riskOf(e)
+  return risk > 0 ? (e.r_pnl || 0) / risk : 0
+}
+
+export function sortTrades(trades) {
+  return [...trades].sort((a, b) => {
+    const da = parseFecha(a.fecha), db = parseFecha(b.fecha)
+    return ((da ? da.getTime() : 0) - (db ? db.getTime() : 0)) || ((a.id || 0) - (b.id || 0))
+  })
 }
 
 export function calcMetrics(trades) {
   const wins = trades.filter(e => e.resultado === 'Win')
   const losses = trades.filter(e => e.resultado === 'Loss')
-  const w = wins.length, l = losses.length, tr = w + l
+  const be = trades.filter(e => e.resultado === 'Breakeven').length
+  const w = wins.length, l = losses.length, tr = w + l, n = w + l + be
   const wr = tr > 0 ? Math.round((w / tr) * 100) : null
   const pnl = parseFloat(trades.reduce((s, e) => s + (e.r_pnl || 0), 0).toFixed(2))
   const rrWins = wins.filter(e => (e.rr_real || e.rr || 0) > 0)
@@ -65,8 +95,66 @@ export function calcMetrics(trades) {
     : null
   const gainSum = wins.reduce((s, e) => s + (e.r_pnl || 0), 0)
   const lossSum = Math.abs(losses.reduce((s, e) => s + (e.r_pnl || 0), 0))
-  const pf = lossSum > 0 ? parseFloat((gainSum / lossSum).toFixed(2)) : null
-  return { w, l, tr, wr, pnl, avgRR, pf, gainSum: parseFloat(gainSum.toFixed(2)), lossSum: parseFloat(lossSum.toFixed(2)) }
+  const pfPct = lossSum > 0 ? parseFloat((gainSum / lossSum).toFixed(2)) : null
+  const gainR = wins.reduce((s, e) => s + rOf(e), 0)
+  const lossR = Math.abs(losses.reduce((s, e) => s + rOf(e), 0))
+  const rSum = trades.filter(isClosed).reduce((s, e) => s + rOf(e), 0)
+  const pf = lossR > 0 ? parseFloat((gainR / lossR).toFixed(2)) : null
+  const avgR = n > 0 ? parseFloat((rSum / n).toFixed(3)) : null
+  return {
+    w, l, tr, be, n, wr, pnl, avgRR, pf, pfPct, avgR,
+    rSum: parseFloat(rSum.toFixed(2)),
+    gainR: parseFloat(gainR.toFixed(2)), lossR: parseFloat(lossR.toFixed(2)),
+    gainSum: parseFloat(gainSum.toFixed(2)), lossSum: parseFloat(lossSum.toFixed(2))
+  }
+}
+
+// Intervalo de confianza 95% (bootstrap, semilla fija → resultado reproducible)
+// del R medio por trade. Sirve para no sobreinterpretar muestras chicas.
+export function calcExpectancyCI(trades, iters = 2000) {
+  const rs = trades.filter(isClosed).map(rOf)
+  if (rs.length < 10) return null
+  let seed = 123456789
+  const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
+  const means = []
+  for (let i = 0; i < iters; i++) {
+    let s = 0
+    for (let j = 0; j < rs.length; j++) s += rs[Math.floor(rnd() * rs.length)]
+    means.push(s / rs.length)
+  }
+  means.sort((a, b) => a - b)
+  return { lo: parseFloat(means[Math.floor(iters * 0.025)].toFixed(3)), hi: parseFloat(means[Math.floor(iters * 0.975)].toFixed(3)), n: rs.length }
+}
+
+// Estadísticas por grupo (plan, riesgo, emoción, firma, nº de trade del día, etc.)
+export function groupStats(trades, keyFn) {
+  const map = new Map()
+  trades.filter(isClosed).forEach(e => {
+    const k = keyFn(e)
+    if (!map.has(k)) map.set(k, [])
+    map.get(k).push(e)
+  })
+  return [...map.entries()].map(([key, arr]) => ({ key, ...calcMetrics(arr) }))
+}
+
+export function calcPlanBreakdown(trades) {
+  const rows = [
+    { key: '100% exacto', label: 'Plan exacto' },
+    { key: 'Parcialmente', label: 'Parcialmente' },
+    { key: 'No cumplía', label: 'No cumplía' },
+  ]
+  return rows.map(r => ({ ...r, ...calcMetrics(trades.filter(e => isClosed(e) && (e.plan || '') === r.key)) }))
+}
+
+// Nº de trade dentro del día (sobre todas las cuentas, por orden de id).
+export function tradeOfDayMap(trades) {
+  const counts = {}, out = new Map()
+  sortTrades(trades.filter(isClosed)).forEach(e => {
+    const k = e.fecha
+    counts[k] = (counts[k] || 0) + 1
+    out.set(e.id, counts[k])
+  })
+  return out
 }
 
 export function pnlSinceLastWD(accId, trades, withdrawals) {
@@ -159,8 +247,9 @@ export function calcStreakDistribution(trades) {
   return { wins: winDist, losses: lossDist }
 }
 
+// Sharpe / Sortino por trade, en R (no anualizados).
 export function calcSharpe(trades) {
-  const rs = trades.filter(e => e.resultado === 'Win' || e.resultado === 'Loss').map(e => e.r_pnl || 0)
+  const rs = trades.filter(isClosed).map(rOf)
   if (rs.length < 3) return null
   const mean = rs.reduce((s, v) => s + v, 0) / rs.length
   const variance = rs.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / rs.length
@@ -169,7 +258,7 @@ export function calcSharpe(trades) {
 }
 
 export function calcSortino(trades) {
-  const rs = trades.filter(e => e.resultado === 'Win' || e.resultado === 'Loss').map(e => e.r_pnl || 0)
+  const rs = trades.filter(isClosed).map(rOf)
   if (rs.length < 3) return null
   const mean = rs.reduce((s, v) => s + v, 0) / rs.length
   const negatives = rs.filter(v => v < 0)
@@ -179,30 +268,20 @@ export function calcSortino(trades) {
   return downsideDev > 0 ? parseFloat((mean / downsideDev).toFixed(2)) : null
 }
 
+// Calmar en R: R total / peor drawdown (en R) de una cuenta individual.
 export function calcCalmar(trades) {
-  const sorted = [...trades]
-    .filter(e => e.resultado === 'Win' || e.resultado === 'Loss')
-    .sort((a, b) => { const da = parseFecha(a.fecha), db = parseFecha(b.fecha); return da - db })
-  if (sorted.length < 2) return null
-  let peak = 0, running = 0, maxDD = 0
-  sorted.forEach(e => {
-    running += e.r_pnl || 0
-    if (running > peak) peak = running
-    const dd = peak - running
-    if (dd > maxDD) maxDD = dd
-  })
-  const totalReturn = sorted.reduce((s, e) => s + (e.r_pnl || 0), 0)
-  return maxDD > 0 ? parseFloat((totalReturn / maxDD).toFixed(2)) : null
+  const closed = trades.filter(isClosed)
+  if (closed.length < 2) return null
+  const maxDD = calcMaxDD(closed, 'R')
+  const totalR = closed.reduce((s, e) => s + rOf(e), 0)
+  return maxDD > 0 ? parseFloat((totalR / maxDD).toFixed(2)) : null
 }
 
+// Expectativa = R medio por trade cerrado (Breakeven incluidos como 0R).
 export function calcExpectancy(trades) {
-  const wins = trades.filter(e => e.resultado === 'Win')
-  const losses = trades.filter(e => e.resultado === 'Loss')
-  const tr = wins.length + losses.length; if (!tr) return null
-  const wr = wins.length / tr
-  const avgW = wins.length ? wins.reduce((s, e) => s + (e.r_pnl || 0), 0) / wins.length : 0
-  const avgL = losses.length ? Math.abs(losses.reduce((s, e) => s + (e.r_pnl || 0), 0) / losses.length) : 0
-  return parseFloat(((wr * avgW) - ((1 - wr) * avgL)).toFixed(3))
+  const closed = trades.filter(isClosed)
+  if (!closed.length) return null
+  return parseFloat((closed.reduce((s, e) => s + rOf(e), 0) / closed.length).toFixed(3))
 }
 
 export function calcEdgeRatio(trades) {
@@ -309,17 +388,14 @@ export function calcAUM(accounts, trades, withdrawals = {}) {
   }
 }
 
-export function buildEquityCurve(trades) {
-  const sorted = [...trades]
-    .filter(e => ['Win', 'Loss', 'Breakeven'].includes(e.resultado))
-    .sort((a, b) => {
-      const da = parseFecha(a.fecha), db = parseFecha(b.fecha)
-      return (da - db) || (a.id - b.id)
-    })
+// Curva acumulada. unit 'pct' (default, suma de % de cuenta, como antes) o 'R'.
+// Ojo: sobre varias cuentas es una suma, no el retorno de un capital real.
+export function buildEquityCurve(trades, unit = 'pct') {
+  const val = unit === 'R' ? rOf : (e => e.r_pnl || 0)
   let running = 0
   const data = [{ fecha: 'Inicio', pnl: 0, resultado: null }]
-  sorted.forEach(t => {
-    running = parseFloat((running + (t.r_pnl || 0)).toFixed(4))
+  sortTrades(trades.filter(isClosed)).forEach(t => {
+    running = parseFloat((running + val(t)).toFixed(4))
     data.push({ fecha: t.fecha, pnl: parseFloat(running.toFixed(2)), resultado: t.resultado })
   })
   return data
@@ -338,16 +414,30 @@ export function calcDirectionStats(trades) {
   }
 }
 
-export function calcMaxDD(trades) {
-  const sorted = [...trades].sort((a, b) => {
-    const da = parseFecha(a.fecha), db = parseFecha(b.fecha); return da - db
+// Drawdown máximo: se calcula POR CUENTA sobre el resultado de cierre de cada
+// día (el orden dentro del mismo día no se puede recuperar en datos viejos) y
+// se devuelve el peor. unit 'pct' (% de cuenta, default) o 'R'.
+export function calcMaxDD(trades, unit = 'pct') {
+  const val = unit === 'R' ? rOf : (e => e.r_pnl || 0)
+  const byAcc = new Map()
+  trades.filter(isClosed).forEach(e => {
+    const k = String(e.cid || e.c_nombre || '')
+    if (!byAcc.has(k)) byAcc.set(k, [])
+    byAcc.get(k).push(e)
   })
-  let peak = 0, running = 0, maxDD = 0
-  sorted.forEach(e => {
-    running += e.r_pnl || 0
-    if (running > peak) peak = running
-    const dd = peak - running
-    if (dd > maxDD) maxDD = dd
+  let worst = 0
+  byAcc.forEach(arr => {
+    const byDay = new Map()
+    arr.forEach(e => {
+      const d = parseFecha(e.fecha); if (!d) return
+      byDay.set(d.getTime(), (byDay.get(d.getTime()) || 0) + val(e))
+    })
+    let cum = 0, peak = 0
+    ;[...byDay.keys()].sort((a, b) => a - b).forEach(t => {
+      cum += byDay.get(t)
+      if (cum > peak) peak = cum
+      if (peak - cum > worst) worst = peak - cum
+    })
   })
-  return parseFloat(maxDD.toFixed(2))
+  return parseFloat(worst.toFixed(2))
 }

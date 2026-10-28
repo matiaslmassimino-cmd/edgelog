@@ -22,7 +22,14 @@ export async function saveTrade(userId, trade) {
     plan: trade.plan || '—', emo: trade.emo || '—', sob: trade.sob || '—',
     par: trade.par || 'EURUSD', tmp: trade.tmp || '—', nota: trade.nota || ''
   }
-  const { error } = await supabase.from('trades').upsert(row)
+  // Checklist pre-trade (columnas de la migración 20261028). Solo se envían si existen en el trade.
+  const chk = {}
+  ;['chk_estructura', 'chk_confirmacion', 'chk_liquidez_fvg'].forEach(k => { if (typeof trade[k] === 'boolean') chk[k] = trade[k] })
+  let { error } = await supabase.from('trades').upsert({ ...row, ...chk })
+  // Si la migración todavía no se corrió, la columna no existe: se guarda igual sin el checklist.
+  if (error && Object.keys(chk).length && (error.code === 'PGRST204' || /chk_/.test(error.message || ''))) {
+    ;({ error } = await supabase.from('trades').upsert(row))
+  }
   if (error) throw error
 }
 
@@ -114,15 +121,49 @@ export async function saveProfile(userId, profile) {
   if (error) throw error
 }
 
+// Parser CSV (RFC 4180): respeta comillas, comas y saltos de línea dentro de
+// un campo, y comillas escapadas como "".
+function splitCSV(text) {
+  const records = []
+  let field = '', rec = [], inQ = false
+  const src = text.replace(/^﻿/, '')
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i]
+    if (inQ) {
+      if (c === '"') {
+        if (src[i + 1] === '"') { field += '"'; i++ } else inQ = false
+      } else field += c
+    } else if (c === '"') inQ = true
+    else if (c === ',') { rec.push(field); field = '' }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && src[i + 1] === '\n') i++
+      rec.push(field); field = ''
+      if (rec.some(v => v !== '')) records.push(rec)
+      rec = []
+    } else field += c
+  }
+  rec.push(field)
+  if (rec.some(v => v !== '')) records.push(rec)
+  return records
+}
+
 export function parseCSV(csvText) {
-  const lines = csvText.trim().split('\n')
-  if (lines.length < 2) throw new Error('CSV vacío o inválido')
-  const header = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''))
+  const records = splitCSV(csvText)
+  if (records.length < 2) throw new Error('CSV vacío o inválido')
+  const header = records[0].map(h => h.trim().toLowerCase())
   const rows = []
-  for (let i = 1; i < lines.length; i++) {
-    const vals = lines[i].split(',')
+  for (let i = 1; i < records.length; i++) {
+    let vals = records[i]
+    // Compatibilidad con exports viejos: "Sí, cedí" salía sin comillas y partía la columna.
+    const si = header.indexOf('sobreoperar')
+    if (vals.length === header.length + 1 && si >= 0 && vals[si].trim() === 'Sí' && vals[si + 1].trim().startsWith('cedí')) {
+      vals = [...vals.slice(0, si), 'Sí, cedí', ...vals.slice(si + 2)]
+    }
+    if (vals.length > header.length) {
+      throw new Error(`Fila ${i + 1}: tiene ${vals.length} columnas y el encabezado ${header.length}. Revisá comas o comillas sin cerrar.`)
+    }
     const row = {}
-    header.forEach((h, j) => { row[h] = (vals[j] || '').trim().replace(/^"|"$/g, '') })
+    header.forEach((h, j) => { row[h] = (vals[j] || '').trim() })
     if (row.fecha && row.cuenta) rows.push(row)
   }
   return rows
@@ -180,14 +221,17 @@ export async function bulkImportCSV(userId, csvText, existingAccounts) {
         id: Date.now() + Math.floor(Math.random() * 100000),
         type: rows.find(r => r.cuenta?.trim() === nombre)?.tipo?.trim() || 'challenge',
         nombre, firma: rows.find(r => r.cuenta?.trim() === nombre)?.firma?.trim() || 'Alpha Capital Group',
-        fase: 'Fase 1', capital: 10000, objetivo: 8, dd: 8, status: 'active'
+        fase: 'Fase 1', capital: 10000, objetivo: 8, dd: 8, status: 'active',
+        nota: 'Creada por import CSV: revisá capital, fase y estado.'
       }
       accMap[nombre] = newAcc.id
       newAccounts.push(newAcc)
     }
   })
   for (const acc of newAccounts) await saveAccount(userId, acc)
-  const trades = rows.map(r => csvRowToTrade(r, accMap))
+  // ids consecutivos en el orden del archivo → el orden relativo queda estable
+  const baseId = Date.now()
+  const trades = rows.map((r, i) => ({ ...csvRowToTrade(r, accMap), id: baseId + i }))
   const batchSize = 50
   for (let i = 0; i < trades.length; i += batchSize) {
     await Promise.all(trades.slice(i, i + batchSize).map(t => saveTrade(userId, t)))
@@ -234,13 +278,15 @@ export async function fetchPublicData(userId) {
 
 export function exportToCSV(trades) {
   const header = ['fecha', 'cuenta', 'firma', 'tipo', 'par', 'temporalidad', 'riesgo', 'resultado', 'rr_obj', 'rr_real', 'parciales', 'direccion', 'pnl', 'plan', 'emocion', 'sobreoperar', 'nota']
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`
   const rows = trades.map(t => [
     t.fecha, t.c_nombre, t.firma, t.c_tipo, t.par, t.tmp, t.risk,
     t.resultado, t.rr, t.rr_real || t.rr, t.parciales || 'No',
-    t.direccion || '—', t.r_pnl, t.plan, t.emo, t.sob,
-    `"${(t.nota || '').replace(/"/g, "'")}"`
+    t.direccion || '—', t.r_pnl, t.plan, t.emo, t.sob, t.nota || ''
   ])
-  const csv = [header, ...rows].map(r => r.join(',')).join('\n')
+  // Todos los campos van entrecomillados: comas, comillas y saltos de línea
+  // en notas o en valores como "Sí, cedí" ya no rompen el archivo.
+  const csv = [header, ...rows].map(r => r.map(q).join(',')).join('\r\n')
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
