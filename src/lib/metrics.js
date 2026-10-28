@@ -673,8 +673,9 @@ export const inputToFecha = v => { const p = (v || '').split('-'); return p.leng
 
 // ── LIBRO DE RETIROS ───────────────────────────────────────────────────────
 // Convención: el monto de cada retiro es lo COBRADO (tu parte, después del split de la firma).
-// Pendiente = ganancia bruta histórica × split − total cobrado. No "se resetea" con cada retiro, así que un
-// retiro parcial no hace desaparecer ganancia sin cobrar.
+// La firma deja la cuenta en su capital inicial después de cada payout: cada retiro abre un CICLO nuevo.
+// Pendiente = resultado del ciclo actual (trades posteriores al último retiro) × split, si es positivo. Una pérdida
+// posterior al payout no devuelve nada de lo ya cobrado, y no se arrastra al ciclo anterior.
 export const splitOf = a => parseInt(String(a?.split || '80/20').split('/')[0]) || 80
 export function calcFundedLedger(trades, accounts, withdrawals) {
   const rows = accounts.filter(a => a.type === 'funded').map(a => {
@@ -685,11 +686,12 @@ export function calcFundedLedger(trades, accounts, withdrawals) {
     const split = splitOf(a)
     const wds = withdrawals[String(a.id)] || []
     const cobrado = wds.reduce((x, w) => x + (w.usd || 0), 0)
-    const miParte = Math.max(0, gross) * split / 100
-    return { a, cap, n: ts.length, pct: parseFloat(pct.toFixed(2)), gross: Math.round(gross), split, miParte: Math.round(miParte), cobrado: Math.round(cobrado), pendiente: Math.round(Math.max(0, miParte - cobrado)), sobrecobrado: cobrado > miParte * 1.05 + 1, nWd: wds.length }
+    const cicloPct = pnlSinceLastWD(a.id, trades, withdrawals)
+    const ciclo = cicloPct / 100 * cap
+    return { a, cap, n: ts.length, pct: parseFloat(pct.toFixed(2)), gross: Math.round(gross), split, cobrado: Math.round(cobrado), cicloPct, ciclo: Math.round(ciclo), pendiente: Math.round(Math.max(0, ciclo) * split / 100), nWd: wds.length }
   })
   const sum = k => rows.reduce((x, r) => x + r[k], 0)
-  return { rows, gross: sum('gross'), miParte: sum('miParte'), cobrado: sum('cobrado'), pendiente: sum('pendiente'), capital: sum('cap'), nWd: sum('nWd') }
+  return { rows, gross: sum('gross'), cobrado: sum('cobrado'), pendiente: sum('pendiente'), ciclo: sum('ciclo'), capital: sum('cap'), nWd: sum('nWd') }
 }
 
 // Valida un retiro antes de guardarlo. Devuelve { errors:[], warnings:[] }.
@@ -705,9 +707,9 @@ export function validateWithdrawal(wd, accounts, withdrawals, ledger, ignoreId =
     const dup = (withdrawals[String(acc.id)] || []).find(w => w.id !== ignoreId && w.fecha === wd.fecha && Math.abs((w.usd || 0) - usd) < 0.01)
     if (dup) errors.push('Ya existe un retiro igual (misma cuenta, fecha y monto).')
     const r = ledger?.rows.find(x => String(x.a.id) === String(acc.id))
-    if (r) {
-      const disponible = r.pendiente + (ignoreId ? ((withdrawals[String(acc.id)] || []).find(w => w.id === ignoreId)?.usd || 0) : 0)
-      if (usd > disponible * 1.1 + 1) warnings.push(`El monto ($${usd.toFixed(0)}) supera lo pendiente según tus trades ($${disponible}). Revisá el monto o la cuenta.`)
+    if (r && !ignoreId) {
+      const disponible = r.pendiente
+      if (usd > disponible * 1.1 + 1) warnings.push(`El monto ($${usd.toFixed(0)}) supera lo pendiente del ciclo actual según tus trades ($${disponible}). Revisá el monto o la cuenta.`)
       else if (usd < disponible * 0.5 && disponible > 50) warnings.push(`Cobrás bastante menos de lo pendiente ($${disponible}). Si fue un retiro parcial, queda saldo por cobrar.`)
     }
   }
@@ -741,7 +743,6 @@ export function auditData(trades, accounts, withdrawals) {
   accounts.forEach(a => {
     if (!(a.capital > 0)) add('error', 'cuentas', `La cuenta ${a.nombre} no tiene capital cargado.`)
   })
-  const ledger = calcFundedLedger(trades, accounts, withdrawals)
   Object.entries(withdrawals).forEach(([accId, list]) => {
     const a = accounts.find(x => String(x.id) === accId)
     list.forEach(w => {
@@ -753,6 +754,5 @@ export function auditData(trades, accounts, withdrawals) {
         add('warn', 'retiros', `Retiro de ${a.nombre} del ${w.fecha}: el % guardado (${(w.pct || 0).toFixed(2)}%) no coincide con monto/capital (${expected.toFixed(2)}%).`, { wid: w.id, fixPct: parseFloat(expected.toFixed(3)) })
     })
   })
-  ledger.rows.filter(r => r.sobrecobrado).forEach(r => add('warn', 'retiros', `${r.a.nombre}: cobraste $${r.cobrado} y tu parte según los trades es $${r.miParte}. Revisá trades o retiros.`))
   return issues
 }
