@@ -239,40 +239,16 @@ export async function bulkImportCSV(userId, csvText, existingAccounts) {
   return { tradesImported: trades.length, newAccounts }
 }
 
-// ── NUEVA FUNCIÓN: busca perfil por slug ──
+// Página pública: los datos llegan por una función de Supabase (get_public_track_record)
+// que devuelve SOLO campos seguros: sin notas, sin emociones, sin user_id y con los
+// números de cuenta enmascarados. Las tablas ya no se pueden leer sin iniciar sesión.
 export async function fetchPublicDataBySlug(slug) {
-  const { data: profileData, error: profileError } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('public_slug', slug)
-    .single()
-
-  if (profileError || !profileData) throw new Error('Track record no encontrado.')
-
-  const userId = profileData.id
-
-  const [accountsRes, tradesRes] = await Promise.all([
-    supabase.from('accounts').select('*').eq('user_id', userId).order('id'),
-    supabase.from('trades').select('*').eq('user_id', userId).order('fecha')
-  ])
-
+  const { data, error } = await supabase.rpc('get_public_track_record', { p_slug: slug })
+  if (error || !data || !data.profile) throw new Error('Track record no encontrado.')
   return {
-    profile: profileData,
-    accounts: accountsRes.data || [],
-    trades: tradesRes.data || []
-  }
-}
-
-export async function fetchPublicData(userId) {
-  const [profileRes, accountsRes, tradesRes] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', userId).single(),
-    supabase.from('accounts').select('*').eq('user_id', userId).order('id'),
-    supabase.from('trades').select('*').eq('user_id', userId).order('fecha')
-  ])
-  return {
-    profile: profileRes.data,
-    accounts: accountsRes.data || [],
-    trades: tradesRes.data || []
+    profile: data.profile,
+    accounts: data.accounts || [],
+    trades: data.trades || []
   }
 }
 
