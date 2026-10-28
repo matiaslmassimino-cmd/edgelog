@@ -17,6 +17,8 @@ export default function HistorialPage({ ctx }) {
   const [filters, setFilters] = useState({ cuenta: '', resultado: '', plan: '', quality: '', tipo: '' })
   const [search, setSearch] = useState('')
   const [shown, setShown] = useState(40)
+  const [edit, setEdit] = useState(null)   // { id, ...campos }
+  const [saving, setSaving] = useState(false)
 
   const fundedIds = new Set(accounts.filter(a => a.type === 'funded').map(a => String(a.id)))
   const cuentas = [...new Set(trades.map(t => t.c_nombre).filter(Boolean))].sort()
@@ -48,12 +50,44 @@ export default function HistorialPage({ ctx }) {
     catch (e) { toast('Error: ' + e.message, 'err') }
   }
 
+  function openEdit(t) {
+    setEdit({
+      id: t.id, fecha: t.fecha || '', cid: String(t.cid || ''), resultado: t.resultado || 'Loss',
+      risk: t.risk || '', rr_real: t.rr_real ?? '', plan: t.plan || '—', direccion: t.direccion || '—',
+      emo: t.emo || '—', sob: t.sob || '—', nota: t.nota || '',
+      _orig: { resultado: t.resultado, risk: t.risk, rr_real: t.rr_real }
+    })
+  }
+
+  async function saveEdit() {
+    const e = edit
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(e.fecha)) { toast('Fecha con formato DD/MM/AAAA', 'err'); return }
+    const rp = parseFloat(e.risk)
+    if (!rp) { toast('Riesgo inválido (ej: 1% o 2%)', 'err'); return }
+    const rr = parseFloat(e.rr_real) || 0
+    const acc = accounts.find(a => String(a.id) === e.cid)
+    const o = e._orig
+    const changedR = e.resultado !== o.resultado || e.risk !== o.risk || String(e.rr_real) !== String(o.rr_real ?? '')
+    const updates = {
+      fecha: e.fecha, resultado: e.resultado, risk: e.risk, rp, rr_real: rr,
+      plan: e.plan, direccion: e.direccion, emo: e.emo, sob: e.sob, nota: e.nota
+    }
+    if (acc) Object.assign(updates, { cid: String(acc.id), c_nombre: acc.nombre, c_tipo: acc.type, firma: acc.firma || '' })
+    // El P&L en % solo se recalcula si cambió resultado, riesgo o R:R (si no, se respeta el valor cargado).
+    if (changedR) updates.r_pnl = e.resultado === 'Win' ? parseFloat((rp * rr).toFixed(4)) : e.resultado === 'Loss' ? -rp : 0
+    setSaving(true)
+    try { await editTrade(e.id, updates); toast('✓ Entrada actualizada', 'ok'); setEdit(null) }
+    catch (err) { toast('Error: ' + err.message, 'err') }
+    setSaving(false)
+  }
+
   async function handleDelete(id) {
     if (!confirm('¿Eliminar esta entrada?')) return
     try { await removeTrade(id); toast('Entrada eliminada', 'info') }
     catch (e) { toast('Error: ' + e.message, 'err') }
   }
 
+  const lbl = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: 'var(--text3)' }
   const sel = {
     padding: '7px 11px', borderRadius: 8, border: '1px solid var(--border2)',
     background: 'var(--bg3)', color: 'var(--text)', fontSize: 12.5, outline: 'none'
@@ -152,7 +186,10 @@ export default function HistorialPage({ ctx }) {
                 </div>
                 {t.nota && <div className="entry-note">{t.nota}</div>}
               </div>
-              <button className="btn btn-sm btn-danger" onClick={() => handleDelete(t.id)}>✕</button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <button className="btn btn-sm" title="Editar" onClick={() => openEdit(t)}>✎</button>
+                <button className="btn btn-sm btn-danger" title="Eliminar" onClick={() => handleDelete(t.id)}>✕</button>
+              </div>
             </div>
           )
         })}
@@ -160,6 +197,37 @@ export default function HistorialPage({ ctx }) {
           <button className="btn" style={{ alignSelf: 'center', marginTop: 8 }} onClick={() => setShown(n => n + 40)}>Mostrar más ({filtered.length - shown} restantes)</button>
         )}
       </div>
+      {edit && (
+        <div className="modal-bg" onClick={() => !saving && setEdit(null)}>
+          <div className="modal" style={{ maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-title">Editar entrada</div>
+            <div className="modal-sub">Corregí lo que cargaste mal. El P&L se recalcula si cambiás resultado, riesgo o R:R real.</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <label style={lbl}>Fecha (DD/MM/AAAA)<input style={sel} value={edit.fecha} onChange={e => setEdit(p => ({ ...p, fecha: e.target.value }))} /></label>
+              <label style={lbl}>Cuenta<select style={sel} value={edit.cid} onChange={e => setEdit(p => ({ ...p, cid: e.target.value }))}>
+                {!accounts.some(a => String(a.id) === edit.cid) && <option value={edit.cid}>{edit.cid || '—'} (actual)</option>}
+                {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.nombre} — {a.firma}</option>)}
+              </select></label>
+              <label style={lbl}>Resultado<select style={sel} value={edit.resultado} onChange={e => setEdit(p => ({ ...p, resultado: e.target.value }))}>
+                {['Win', 'Loss', 'Breakeven'].map(r => <option key={r}>{r}</option>)}</select></label>
+              <label style={lbl}>Riesgo<select style={sel} value={edit.risk} onChange={e => setEdit(p => ({ ...p, risk: e.target.value }))}>
+                {[...new Set(['0.5%', '1%', '1.5%', '2%', '2.5%', '3%', edit.risk].filter(Boolean))].map(r => <option key={r}>{r}</option>)}</select></label>
+              <label style={lbl}>R:R real<input style={sel} type="number" step="0.1" value={edit.rr_real} onChange={e => setEdit(p => ({ ...p, rr_real: e.target.value }))} /></label>
+              <label style={lbl}>Dirección<select style={sel} value={edit.direccion} onChange={e => setEdit(p => ({ ...p, direccion: e.target.value }))}>
+                {['—', 'Compra', 'Venta'].map(r => <option key={r}>{r}</option>)}</select></label>
+              <label style={lbl}>Plan<select style={sel} value={edit.plan} onChange={e => setEdit(p => ({ ...p, plan: e.target.value }))}>
+                {[...new Set(['100% exacto', 'Parcialmente', 'No cumplía', edit.plan])].map(r => <option key={r}>{r}</option>)}</select></label>
+              <label style={lbl}>Emoción<select style={sel} value={edit.emo} onChange={e => setEdit(p => ({ ...p, emo: e.target.value }))}>
+                {[...new Set(['—', 'Calmo', 'Ansioso', 'FOMO', 'Revenge', edit.emo])].map(r => <option key={r}>{r}</option>)}</select></label>
+            </div>
+            <label style={{ ...lbl, marginTop: 10 }}>Nota<textarea style={{ ...sel, width: '100%', minHeight: 60 }} value={edit.nota} onChange={e => setEdit(p => ({ ...p, nota: e.target.value }))} /></label>
+            <div className="modal-actions">
+              <button className="btn" disabled={saving} onClick={() => setEdit(null)}>Cancelar</button>
+              <button className="btn btn-main" disabled={saving} onClick={saveEdit}>{saving ? 'Guardando…' : 'Guardar cambios'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
