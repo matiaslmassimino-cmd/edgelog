@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
-import { groupByPeriod, periodMetrics, keyLabel, parseFecha, calcMetrics, isQuality, isClosed } from '../lib/metrics'
+import { groupByPeriod, periodMetrics, keyLabel, parseFecha, calcMetrics, isQuality, isClosed, calcUnifiedReturn } from '../lib/metrics'
 
 const tip = { background: '#1A2235', border: '1px solid #2A3A52', borderRadius: 8, fontSize: 11, color: '#E2E8F0' }
 
@@ -152,6 +152,33 @@ export default function RendimientoPage({ ctx }) {
                 <div style={{ fontSize: 11, color: 'var(--text3)' }}>Promedio por cuenta</div>
                 <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: avg >= 0 ? 'var(--green)' : 'var(--red)' }}>{avg >= 0 ? '+' : ''}{avg}%</div>
                 <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>cada cuenta pesa igual, sin importar el tamaño</div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Simulación: capital unificado */}
+      {selectedAcc === 'all' && (() => {
+        const u = calcUnifiedReturn(trades, accounts)
+        if (!u) return null
+        const real = { pct: gTotal.pnl, usd: gUsd }
+        return (
+          <div className="card" style={{ marginBottom: 16, borderColor: 'var(--gold-border)' }}>
+            <div className="card-title">Simulación · capital unificado de ${u.base.toLocaleString('es-AR')}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 14, alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Real (cómo operaste)</div>
+                <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: real.pct >= 0 ? 'var(--green)' : 'var(--red)' }}>{real.pct >= 0 ? '+' : ''}{real.pct}%</div>
+                <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{real.usd >= 0 ? '+' : ''}${real.usd.toLocaleString('es-AR')}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--gold)' }}>Simulado (todo en una cuenta)</div>
+                <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: u.pct >= 0 ? 'var(--green)' : 'var(--red)' }}>{u.pct >= 0 ? '+' : ''}{u.pct}%</div>
+                <div style={{ fontSize: 10.5, color: 'var(--text3)' }}>{u.usd >= 0 ? '+' : ''}${u.usd.toLocaleString('es-AR')}</div>
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--text2)', lineHeight: 1.6 }}>
+                Qué habrías ganado si los {u.setups} setups en fondeadas se hubieran operado una vez sobre los ${u.base.toLocaleString('es-AR')} juntos, con el mismo % de riesgo que usaste y sin compuesto. Es hipotético: no considera los límites de la firma ni que más tamaño implica más riesgo en dólares. La diferencia con lo real es capital que no estuvo operando.
               </div>
             </div>
           </div>

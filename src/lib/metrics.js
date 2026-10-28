@@ -231,6 +231,20 @@ export function calcFundedSummary(trades, accounts) {
   return { m, n: ft.length, accounts: live.length, capital: live.reduce((s, a) => s + (a.capital || 0), 0), usd: parseFloat(usd.toFixed(0)), pct, base, perAccount, exact, trades: ft }
 }
 
+// SIMULACIÓN: rentabilidad que habrías tenido si todo el capital fondeado fuera UNA sola cuenta y cada
+// setup se hubiera operado una vez, con el % de riesgo que realmente usaste (sin interés compuesto).
+// Es hipotética: no incluye límites de la firma ni el efecto de operar más tamaño. Si un setup se operó
+// en varias fondeadas, cuenta una sola vez (promedio de sus filas).
+export function calcUnifiedReturn(trades, accounts) {
+  const fundedIds = new Set(accounts.filter(a => a.type === 'funded').map(a => String(a.id)))
+  const ft = trades.filter(t => isClosed(t) && fundedIds.has(String(t.cid)))
+  if (!ft.length) return null
+  const sets = calcSetups(ft)
+  const pct = sets.reduce((x, g) => x + g.trades.reduce((y, t) => y + (t.r_pnl || 0), 0) / g.trades.length, 0)
+  const base = [...new Set(ft.map(t => String(t.cid)))].reduce((x, id) => x + (accounts.find(a => String(a.id) === id)?.capital || 0), 0)
+  return { pct: parseFloat(pct.toFixed(2)), usd: Math.round(pct / 100 * base), base, setups: sets.length, trades: ft.length }
+}
+
 // Curva de capital de las fondeadas en % del capital total, sin interés compuesto.
 export function calcFundedCurve(trades, accounts) {
   const cap = new Map(accounts.map(a => [String(a.id), a.capital || 0]))
