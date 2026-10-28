@@ -16,6 +16,7 @@ export default function HistorialPage({ ctx }) {
   const { trades, accounts, removeTrade, editTrade, toast } = ctx
   const [filters, setFilters] = useState({ cuenta: '', resultado: '', plan: '', quality: '', tipo: '' })
   const [search, setSearch] = useState('')
+  const [shown, setShown] = useState(40)
 
   const fundedIds = new Set(accounts.filter(a => a.type === 'funded').map(a => String(a.id)))
   const cuentas = [...new Set(trades.map(t => t.c_nombre).filter(Boolean))].sort()
@@ -121,7 +122,7 @@ export default function HistorialPage({ ctx }) {
       {/* Lista */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {filtered.length === 0 && <div className="empty"><div className="empty-icon">▸</div><p>Sin entradas que coincidan.</p></div>}
-        {filtered.map(t => {
+        {filtered.slice(0, shown).map(t => {
           const q = isQuality(t)
           const isFunded = fundedIds.has(String(t.cid))
           const dotColor = t.resultado === 'Win' ? 'var(--green)' : t.resultado === 'Loss' ? 'var(--red)' : 'var(--amber)'
@@ -155,6 +156,9 @@ export default function HistorialPage({ ctx }) {
             </div>
           )
         })}
+        {filtered.length > shown && (
+          <button className="btn" style={{ alignSelf: 'center', marginTop: 8 }} onClick={() => setShown(n => n + 40)}>Mostrar más ({filtered.length - shown} restantes)</button>
+        )}
       </div>
     </div>
   )

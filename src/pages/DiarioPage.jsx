@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { calcDayStatus, calcRiskBucket, calcPlanBreakdown, fmtR } from '../lib/metrics'
 
 const RISK_OPTS = ['0.5%', '1%', '1.5%', '2%', '2.5%', '3%']
 const EMO_OPTS = ['Calmo 😌', 'Ansioso 😰', 'FOMO 😬', 'Revenge 😤']
@@ -46,6 +47,44 @@ function ChipGroup({ opts, value, onChange }) {
 const today = () => new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 const EMPTY = { fecha: today(), cid: '', par: 'EURUSD', tmp: '2m', rr: '', rrReal: '', nota: '', risk: '', resultado: '', direccion: '', parciales: 'No — full target', plan: '', chkEst: false, chkConf: false, chkLiq: false, emo: '', sob: 'No' }
 const EMPTY_WD = { fecha: today(), cid: '', usd: '', pct: '', nota: '' }
+
+
+// Alertas de disciplina en vivo, calculadas con tus propios trades.
+function DisciplinePanel({ f, trades, accounts, profile }) {
+  const items = []
+  const day = calcDayStatus(trades, f.fecha)
+  if (day.level !== 'ok') items.push({ level: day.level, text: day.msg })
+  else items.push({ level: 'ok', text: `Hoy: ${day.n} trades · ${fmtR(day.rToday, 1)}.` })
+  const rp = parseFloat(f.risk) || 0
+  const acc = accounts.find(a => String(a.id) === String(f.cid))
+  const fundedMax = parseFloat(profile?.risk_funded) || 1
+  const chMax = parseFloat(profile?.risk_challenge) || 2
+  if (rp >= 2.5) {
+    const b = calcRiskBucket(trades, 2.5)
+    items.push({ level: 'stop', text: `Riesgo ${rp}%: en tus datos, los trades a 2.5% o más suman ${b.w} ganados y ${b.l} perdidos (${fmtR(b.avgR, 2)} por trade).` })
+  } else if (acc && acc.type === 'funded' && rp > fundedMax) {
+    items.push({ level: 'warn', text: `Cuenta fondeada: tu regla es ${fundedMax}% y estás poniendo ${rp}%.` })
+  } else if (acc && acc.type !== 'funded' && rp > chMax) {
+    items.push({ level: 'warn', text: `Challenge: tu regla es ${chMax}% y estás poniendo ${rp}%.` })
+  }
+  const chk = CHECKS.filter(c => f[c.key]).length
+  if (chk < 3) {
+    const pb = calcPlanBreakdown(trades).find(x => x.key === 'Parcialmente')
+    items.push({ level: chk === 0 ? 'stop' : 'warn', text: `Setup incompleto (${chk}/3). Tus trades "Parcialmente" rinden ${fmtR(pb?.avgR, 2)} por trade (${pb?.n || 0} trades, etiquetados a mano).` })
+  } else items.push({ level: 'ok', text: 'Setup completo 3/3.' })
+  const col = { ok: 'var(--green)', warn: 'var(--amber)', stop: 'var(--red)' }
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <div className="card-title">Antes de entrar</div>
+      {items.map((it, i) => (
+        <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '7px 0', borderBottom: i < items.length - 1 ? '1px solid var(--border)' : 'none' }}>
+          <div style={{ width: 9, height: 9, borderRadius: '50%', background: col[it.level], marginTop: 5, flexShrink: 0 }} />
+          <div style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.5 }}>{it.text}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export default function DiarioPage({ ctx }) {
   const { accounts, addTrade, addWithdrawal, toast } = ctx
@@ -132,6 +171,7 @@ export default function DiarioPage({ ctx }) {
       {mode === 'trade' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div>
+            <DisciplinePanel f={f} trades={ctx.trades} accounts={accounts} profile={ctx.profile} />
             <div className="card" style={{ marginBottom: 12 }}>
               <div className="card-title">Datos del trade</div>
               <div className="g2">
