@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { fetchPublicDataBySlug } from '../lib/sync'
-import { calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
+import { calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcExpectancyCI, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 
 const tip = { background: '#0F1828', border: '1px solid #1E3A5F', borderRadius: 10, fontSize: 11, color: '#E2E8F0', padding: '10px 14px' }
@@ -261,6 +261,7 @@ export default function Public() {
   const gQ = calcMetrics(qTrades)
   const edge = calcEdgeRatio(trades)
   const exp = calcExpectancy(trades)
+  const ci = calcExpectancyCI(trades)
   const cons = calcConsistency(trades)
   const streaks = calcStreaks(trades)
   const aum = calcAUM(accounts, trades, {})
@@ -337,16 +338,18 @@ export default function Public() {
           </div>
           <div className="pub-hero-stats" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {[
-              { label: 'Retorno total', value: (g.pnl >= 0 ? '+' : '') + g.pnl.toFixed(2) + '%', color: g.pnl >= 0 ? '#22C55E' : '#EF4444', big: true },
-              { label: 'Win rate', value: g.wr !== null ? g.wr + '%' : '—', color: g.wr >= 50 ? '#22C55E' : '#EF4444' },
-              { label: 'WR disciplinado ✦', value: gQ.wr !== null ? gQ.wr + '%' : '—', color: '#EAB308' },
-              { label: 'Prof. Factor', value: g.pf !== null ? g.pf.toFixed(2) : '—', color: g.pf >= 1.5 ? '#22C55E' : '#F59E0B' },
-              { label: 'Trades', value: String(g.tr), color: '#E2E8F0' },
-              { label: 'Capital activo', value: '$' + aum.total.toLocaleString(), color: '#60A5FA' },
-            ].map(({ label, value, color, big }, i) => (
-              <div key={label} className="pub-hero-stat" style={{ paddingRight: 28, marginRight: 28, borderRight: i < 5 ? '1px solid rgba(255,255,255,.07)' : 'none', marginBottom: 8 }}>
+              { label: 'R acumulado', value: (g.rSum >= 0 ? '+' : '') + g.rSum.toFixed(1) + 'R', sub: `suma de % de cuentas: ${g.pnl >= 0 ? '+' : ''}${g.pnl.toFixed(2)}%`, color: g.rSum >= 0 ? '#22C55E' : '#EF4444', big: true },
+              { label: 'Expectativa', value: g.avgR !== null ? (g.avgR >= 0 ? '+' : '') + g.avgR.toFixed(2) + 'R' : '—', sub: ci ? `IC 95%: ${ci.lo >= 0 ? '+' : ''}${ci.lo} a ${ci.hi >= 0 ? '+' : ''}${ci.hi}` : 'por trade', color: g.avgR > 0 ? '#22C55E' : '#EF4444' },
+              { label: 'Win rate', value: g.wr !== null ? g.wr + '%' : '—', sub: 'sin contar breakeven', color: g.wr >= 50 ? '#22C55E' : '#EF4444' },
+              { label: 'WR plan exacto ✦', value: gQ.wr !== null ? gQ.wr + '%' : '—', sub: `${gQ.n} trades`, color: '#EAB308' },
+              { label: 'Prof. factor (R)', value: g.pf !== null ? g.pf.toFixed(2) : '—', color: g.pf >= 1.5 ? '#22C55E' : '#F59E0B' },
+              { label: 'Trades', value: String(g.n), sub: `${g.w}W · ${g.l}L · ${g.be} BE`, color: '#E2E8F0' },
+              { label: 'Capital fondeado', value: '$' + aum.funded.toLocaleString(), sub: `+ $${aum.challenge.toLocaleString()} en evaluación`, color: '#60A5FA' },
+            ].map(({ label, value, sub, color, big }, i) => (
+              <div key={label} className="pub-hero-stat" style={{ paddingRight: 28, marginRight: 28, borderRight: i < 6 ? '1px solid rgba(255,255,255,.07)' : 'none', marginBottom: 8 }}>
                 <div style={{ fontSize: 9.5, color: 'rgba(96,165,250,.4)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 4 }}>{label}</div>
                 <div className={big ? 'pub-hero-val-big' : 'pub-hero-val'} style={{ fontFamily: "'DM Serif Display',serif", fontSize: big ? 40 : 26, color, lineHeight: 1 }}>{value}</div>
+                {sub && <div style={{ fontSize: 10, color: '#4A6080', marginTop: 5 }}>{sub}</div>}
               </div>
             ))}
           </div>
@@ -360,7 +363,7 @@ export default function Public() {
       <div className="pub-content" style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 60px 80px' }}>
 
         {/* Equity curve */}
-        <SectionTitle sub="Evolución del P&L acumulado desde el primer trade.">Equity Curve</SectionTitle>
+        <SectionTitle sub="Suma acumulada del resultado de todas las cuentas (en % de cada cuenta), desde el primer trade. No equivale al retorno de un capital único.">Equity Curve</SectionTitle>
         <div style={{ background: 'linear-gradient(135deg, #0D1B2E, #111827)', border: '1px solid #1E2A3A', borderRadius: 16, padding: '16px 20px', marginBottom: 8 }}>
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={equityData}>
@@ -395,9 +398,9 @@ export default function Public() {
         <div className="pub-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 6 }}>
           <StatCard label="Profitability Factor" value={g.pf !== null ? g.pf.toFixed(2) : '—'} color={g.pf >= 1.5 ? '#22C55E' : g.pf >= 1 ? '#F59E0B' : '#EF4444'} sub={g.pf >= 1.5 ? 'Excelente' : 'Positivo'} desc="Relación entre ganancias brutas y pérdidas brutas. Un PF mayor a 1.5 indica que el sistema genera más de $1.50 por cada $1 perdido. Sólido desde 1.5, excelente sobre 2.0." />
           <StatCard label="Win Rate Global" value={g.wr !== null ? g.wr + '%' : '—'} color={g.wr >= 50 ? '#22C55E' : '#EF4444'} sub={`${g.w}W · ${g.l}L`} desc="Porcentaje de operaciones cerradas con ganancia. Un WR alto solo no garantiza rentabilidad — importa combinarlo con el R:R promedio obtenido." />
-          <StatCard label="WR Disciplinado ✦" value={gQ.wr !== null ? gQ.wr + '%' : '—'} color="#EAB308" sub={`${qTrades.length} trades con plan`} desc="Win rate calculado solo sobre operaciones donde se respetó el plan y se operó con calma. Refleja el potencial real del sistema ejecutado correctamente." />
+          <StatCard label="WR Disciplinado ✦" value={gQ.wr !== null ? gQ.wr + '%' : '—'} color="#EAB308" sub={`${qTrades.length} trades con plan exacto`} desc="Win rate calculado solo sobre operaciones con el plan ejecutado al 100%. Los trades 'Parcialmente' no cuentan como disciplinados." />
           <StatCard label="R:R Real Promedio" value={g.avgRR !== null ? '1:' + g.avgRR.toFixed(2) : '—'} color={g.avgRR >= 2 ? '#22C55E' : '#F59E0B'} sub="sobre trades ganadores" desc="Risk:Reward real promedio en operaciones exitosas. Un R:R de 1:2 significa que gana el doble de lo que arriesga." />
-          <StatCard label="Expectancy por Trade" value={exp !== null ? (exp > 0 ? '+' : '') + exp + '%' : '—'} color={exp > 0 ? '#22C55E' : '#EF4444'} sub={exp > 0 ? 'Edge positivo' : 'Sin edge'} desc="Ganancia o pérdida promedio esperada por operación. Si es positiva, el sistema tiene ventaja estadística y es rentable a largo plazo." />
+          <StatCard label="Expectancy por Trade" value={exp !== null ? (exp > 0 ? '+' : '') + exp + 'R' : '—'} color={exp > 0 ? '#22C55E' : '#EF4444'} sub={exp > 0 ? 'Edge positivo' : 'Sin edge'} desc="Ganancia o pérdida promedio esperada por operación. Si es positiva, el sistema tiene ventaja estadística y es rentable a largo plazo." />
           <StatCard label="Consistencia mensual" value={cons.pct !== null ? cons.pct + '%' : '—'} color={cons.pct >= 70 ? '#22C55E' : '#F59E0B'} sub={`${cons.months.filter(m => m.positive).length}/${cons.months.length} meses positivos`} desc="Porcentaje de meses cerrados en positivo. Una consistencia alta (+70%) indica resultados estables mes a mes." />
         </div>
 
@@ -430,7 +433,7 @@ export default function Public() {
           <div style={{ padding: '24px 28px', background: 'linear-gradient(135deg, #0D1B2E, #111827)' }}>
             <div style={{ fontSize: 9.5, color: '#4A6080', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 8, fontWeight: 600 }}>Resultado real</div>
             <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 40, color: g.pnl >= 0 ? '#22C55E' : '#EF4444', lineHeight: 1, marginBottom: 6 }}>{g.pnl >= 0 ? '+' : ''}{g.pnl.toFixed(2)}%</div>
-            <div style={{ fontSize: 11.5, color: '#4A6080' }}>{g.tr} operaciones · {violated.length} fuera de plan</div>
+            <div style={{ fontSize: 11.5, color: '#4A6080' }}>{g.n} operaciones · {violated.length} fuera de plan</div>
           </div>
           <div style={{ padding: '24px 28px', background: 'linear-gradient(135deg, #0F2040, #1A3060)', borderLeft: '1px solid #1E3A5F' }}>
             <div style={{ fontSize: 9.5, color: 'rgba(96,165,250,.6)', textTransform: 'uppercase', letterSpacing: '.12em', marginBottom: 8, fontWeight: 600 }}>Potencial del sistema ✦</div>
@@ -544,7 +547,7 @@ export default function Public() {
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 11, color: '#4A6080' }}>Generado el {dateStr}</div>
-              <div style={{ fontSize: 11, color: '#4A6080', marginTop: 2 }}>{g.tr} operaciones · {spanDays} días</div>
+              <div style={{ fontSize: 11, color: '#4A6080', marginTop: 2 }}>{g.n} operaciones · {spanDays} días</div>
             </div>
           </div>
         </div>

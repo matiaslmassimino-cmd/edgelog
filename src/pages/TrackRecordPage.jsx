@@ -45,16 +45,17 @@ export default function TrackRecordPage({ ctx }) {
         <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 32, color: '#fff', marginBottom: 4 }}>Edge<em style={{ color: 'rgba(96,165,250,.8)', fontStyle: 'italic' }}>Log</em></div>
         <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 17, color: 'rgba(96,165,250,.6)', marginBottom: 20 }}>{profile?.name || 'Matias Massimino'} · Prop Firm Journal</div>
         <div>
-          <div className="tr-hero-val" style={{ color: g.pnl >= 0 ? '#22C55E' : '#EF4444' }}>{g.pnl >= 0 ? '+' : ''}{g.pnl.toFixed(2)}%</div>
-          <div className="tr-hero-lbl">Retorno total acumulado</div>
+          <div className="tr-hero-val" style={{ color: g.rSum >= 0 ? '#22C55E' : '#EF4444' }}>{g.rSum >= 0 ? '+' : ''}{g.rSum.toFixed(1)}R</div>
+          <div className="tr-hero-lbl">R acumulado · suma de % de cuentas: {g.pnl >= 0 ? '+' : ''}{g.pnl.toFixed(2)}%</div>
         </div>
         <div className="tr-meta-row">
           {[
-            { label: 'Trades', value: g.tr },
-            { label: 'Win rate', value: g.wr !== null ? g.wr + '%' : '—' },
-            { label: 'Prof. Factor', value: g.pf !== null ? g.pf.toFixed(2) : '—' },
+            { label: 'Trades', value: g.n },
+            { label: 'Win rate (sin BE)', value: g.wr !== null ? g.wr + '%' : '—' },
+            { label: 'Expectativa', value: g.avgR !== null ? (g.avgR >= 0 ? '+' : '') + g.avgR.toFixed(2) + 'R' : '—' },
+            { label: 'Prof. Factor (R)', value: g.pf !== null ? g.pf.toFixed(2) : '—' },
             { label: 'Días operando', value: spanDays },
-            { label: 'Capital activo', value: '$' + aum.total.toLocaleString() },
+            { label: 'Capital fondeado', value: '$' + aum.funded.toLocaleString() },
           ].map(({ label, value }) => (
             <div key={label}>
               <div className="tr-meta-val">{value}</div>
@@ -70,7 +71,7 @@ export default function TrackRecordPage({ ctx }) {
         <div className="rvp-real">
           <div className="rvp-label" style={{ color: 'var(--text3)' }}>Resultado real obtenido</div>
           <div className="rvp-val" style={{ color: g.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{g.pnl >= 0 ? '+' : ''}{g.pnl.toFixed(2)}%</div>
-          <div className="rvp-sub">{g.tr} trades · {violated.length} fuera de plan</div>
+          <div className="rvp-sub">{g.n} trades · {violated.length} fuera de plan</div>
         </div>
         <div className="rvp-potential">
           <div className="rvp-label" style={{ color: 'var(--accent2)' }}>Potencial del sistema ✦</div>
@@ -87,7 +88,7 @@ export default function TrackRecordPage({ ctx }) {
       <div className="quality-sep">Resumen ejecutivo</div>
       <div className="card" style={{ marginBottom: 18 }}>
         <p style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.8, marginBottom: 16 }}>
-          {profile?.name || 'Matias'} opera {profile?.par || 'EURUSD'} bajo un sistema discrecional basado en estructura de mercado, gestionando {accounts.filter(a => a.status === 'active').length} cuentas activas. El track record documenta {g.tr} operaciones con trazabilidad completa de cada decisión, incluyendo estado emocional, cumplimiento de plan y gestión de riesgo.
+          {profile?.name || 'Matias'} opera {profile?.par || 'EURUSD'} bajo un sistema discrecional basado en estructura de mercado, gestionando {accounts.filter(a => a.status === 'active').length} cuentas activas. El track record documenta {g.n} operaciones con trazabilidad completa de cada decisión, incluyendo estado emocional, cumplimiento de plan y gestión de riesgo.
         </p>
         <div className="exec-grid">
           {[

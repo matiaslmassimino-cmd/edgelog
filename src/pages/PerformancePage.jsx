@@ -71,7 +71,7 @@ export default function PerformancePage({ ctx }) {
         <div className="rvp-real">
           <div className="rvp-label" style={{ color: 'var(--text3)' }}>Resultado real</div>
           <div className="rvp-val" style={{ color: g.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{g.pnl >= 0 ? '+' : ''}{g.pnl.toFixed(2)}%</div>
-          <div className="rvp-sub">{g.tr} trades · {violated.length} fuera de plan</div>
+          <div className="rvp-sub">{g.n} trades · {violated.length} fuera de plan</div>
         </div>
         <div className="rvp-potential">
           <div className="rvp-label" style={{ color: 'var(--accent2)' }}>Potencial del sistema ✦</div>

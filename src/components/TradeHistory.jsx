@@ -1,5 +1,6 @@
 
 import { useState } from 'react'
+import { isQuality } from '../lib/metrics'
 
 const DIRS = ['—', 'Compra', 'Venta']
 
@@ -14,11 +15,6 @@ export default function TradeHistory({ trades, accounts, onDelete, onToggleDir }
   })
 
   const cuentas = [...new Set(trades.map(t => t.c_nombre))].sort()
-
-  function isQuality(t) {
-    return (t.plan === '100% exacto' || t.plan === 'Parcialmente') &&
-      t.emo === 'Calmo' && t.sob !== 'Sí, cedí' && t.opero !== 'Sobreoperé'
-  }
 
   function nextDir(cur) {
     const idx = DIRS.indexOf(cur || '—')
