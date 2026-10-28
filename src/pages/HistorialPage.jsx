@@ -13,7 +13,7 @@ function Badge({ children, color = 'slate' }) {
 }
 
 export default function HistorialPage({ ctx }) {
-  const { trades, accounts, removeTrade, editTrade, toast } = ctx
+  const { allTrades: trades, allAccounts: accounts, removeTrade, editTrade, toast } = ctx
   const [filters, setFilters] = useState({ cuenta: '', resultado: '', plan: '', quality: '', tipo: '' })
   const [search, setSearch] = useState('')
   const [shown, setShown] = useState(40)
@@ -21,6 +21,7 @@ export default function HistorialPage({ ctx }) {
   const [saving, setSaving] = useState(false)
 
   const fundedIds = new Set(accounts.filter(a => a.type === 'funded').map(a => String(a.id)))
+  const personalIds = new Set(accounts.filter(a => a.type === 'personal').map(a => String(a.id)))
   const cuentas = [...new Set(trades.map(t => t.c_nombre).filter(Boolean))].sort()
 
   const sorted = [...trades].sort((a, b) => {
@@ -31,7 +32,8 @@ export default function HistorialPage({ ctx }) {
 
   const filtered = sorted.filter(t => {
     if (filters.tipo === 'funded' && !fundedIds.has(String(t.cid))) return false
-    if (filters.tipo === 'challenge' && fundedIds.has(String(t.cid))) return false
+    if (filters.tipo === 'challenge' && (fundedIds.has(String(t.cid)) || personalIds.has(String(t.cid)))) return false
+    if (filters.tipo === 'personal' && !personalIds.has(String(t.cid))) return false
     if (filters.cuenta && t.c_nombre !== filters.cuenta) return false
     if (filters.resultado && t.resultado !== filters.resultado) return false
     if (filters.plan && t.plan !== filters.plan) return false
@@ -110,6 +112,7 @@ export default function HistorialPage({ ctx }) {
           { v: '', label: 'Todas' },
           { v: 'funded', label: '◆ Solo fondeadas' },
           { v: 'challenge', label: '⚡ Solo challenges' },
+          ...(personalIds.size ? [{ v: 'personal', label: '◉ Capital propio' }] : []),
         ].map(opt => (
           <button key={opt.v}
             className={`btn btn-sm ${filters.tipo === opt.v ? 'btn-main' : ''}`}

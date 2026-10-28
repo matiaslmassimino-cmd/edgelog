@@ -756,3 +756,53 @@ export function auditData(trades, accounts, withdrawals) {
   })
   return issues
 }
+
+
+// ── CAPITAL PROPIO (cuenta personal real) ──
+// Cuenta con dinero propio: no es de ninguna firma, así que NO entra en las métricas de fondeo/challenge.
+export const isPersonalAcc = a => a?.type === 'personal'
+export function splitPersonal(trades, accounts) {
+  const ids = new Set(accounts.filter(isPersonalAcc).map(a => String(a.id)))
+  const isP = t => ids.has(String(t.cid)) || t.c_tipo === 'personal'
+  return {
+    firmTrades: trades.filter(t => !isP(t)),
+    personalTrades: trades.filter(isP),
+    firmAccounts: accounts.filter(a => !isPersonalAcc(a)),
+    personalAccounts: accounts.filter(isPersonalAcc)
+  }
+}
+
+// Una cuenta real SÍ compone: arriesgás un % del saldo actual, así que el saldo se calcula encadenando
+// cada trade (saldo × (1 + P&L%)). Es lo que debería coincidir con Myfxbook (salvo comisiones/swaps).
+export function calcPersonalSummary(trades, accounts) {
+  const accs = accounts.filter(isPersonalAcc)
+  if (!accs.length) return null
+  const ids = new Set(accs.map(a => String(a.id)))
+  const pt = sortTrades(trades.filter(t => isClosed(t) && ids.has(String(t.cid))))
+  const start = accs.reduce((s, a) => s + (a.capital || 0), 0)
+  const bal = {}
+  accs.forEach(a => { bal[String(a.id)] = a.capital || 0 })
+  const total = () => Object.values(bal).reduce((s, v) => s + v, 0)
+  const points = [{ fecha: 'Inicio', balance: parseFloat(start.toFixed(2)), pct: 0 }]
+  let peak = start, maxDD = 0
+  pt.forEach(t => {
+    bal[String(t.cid)] *= 1 + (t.r_pnl || 0) / 100
+    const tot = total()
+    if (tot > peak) peak = tot
+    if (peak > 0 && (peak - tot) / peak * 100 > maxDD) maxDD = (peak - tot) / peak * 100
+    points.push({ fecha: t.fecha, balance: parseFloat(tot.toFixed(2)), pct: parseFloat(((tot / start - 1) * 100).toFixed(2)) })
+  })
+  const balance = total()
+  const risks = pt.map(riskOf).filter(r => r > 0)
+  return {
+    n: pt.length, start, accounts: accs.length,
+    balance: parseFloat(balance.toFixed(2)),
+    usd: parseFloat((balance - start).toFixed(2)),
+    retPct: start > 0 ? parseFloat(((balance / start - 1) * 100).toFixed(2)) : 0,
+    simplePct: parseFloat(pt.reduce((s, t) => s + (t.r_pnl || 0), 0).toFixed(2)),
+    maxDD: parseFloat(maxDD.toFixed(2)),
+    avgRisk: risks.length ? parseFloat((risks.reduce((s, v) => s + v, 0) / risks.length).toFixed(1)) : null,
+    maxRisk: risks.length ? Math.max(...risks) : null,
+    m: calcMetrics(pt), points, trades: pt
+  }
+}

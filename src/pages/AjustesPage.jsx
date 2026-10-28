@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import DataAudit from '../components/DataAudit'
 
 export default function AjustesPage({ ctx }) {
-  const { trades, accounts, exportCSV, importCSV, toast, userId, profile, updateProfile } = ctx
+  const { allTrades: trades, allAccounts: accounts, exportCSV, importCSV, toast, userId, profile, updateProfile } = ctx
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState(null)
   const [editingSlug, setEditingSlug] = useState(false)

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { fetchPublicDataBySlug } from '../lib/sync'
-import { rOf, calcMetrics, isQuality, calcExpectancyCI, calcExecutionSplit, fmtR, calcMaxDD, calcFundedSummary, calcFundedGrowth, calcEvaluationStats, calcConsistency, buildEquityCurve, calcStreaks, calcSetups, parseFecha } from '../lib/metrics'
+import { rOf, calcMetrics, calcPersonalSummary, splitPersonal, isQuality, calcExpectancyCI, calcExecutionSplit, fmtR, calcMaxDD, calcFundedSummary, calcFundedGrowth, calcEvaluationStats, calcConsistency, buildEquityCurve, calcStreaks, calcSetups, parseFecha } from '../lib/metrics'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 
 const C = { bg: '#0B0F17', card: '#111827', line: '#1E2A3A', mute: '#4A6080', text: '#E2E8F0', soft: '#94A3B8', blue: '#3B82F6', blueL: '#60A5FA', gold: '#FBBF24', green: '#22C55E', red: '#EF4444', amber: '#F59E0B' }
@@ -59,7 +59,11 @@ export default function Public() {
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: C.bg, color: C.red, fontSize: 14, padding: 20, textAlign: 'center' }}>{error || 'Perfil no encontrado.'}</div>
   )
 
-  const { profile, accounts, trades } = data
+  const { profile } = data
+  // La cuenta de capital propio va aparte: no se mezcla con las métricas de las firmas.
+  const { firmTrades: trades, firmAccounts: accounts } = splitPersonal(data.trades, data.accounts)
+  const own = calcPersonalSummary(data.trades, data.accounts)
+  const ownLink = data.accounts.find(a => a.type === 'personal' && a.link)?.link
   const g = calcMetrics(trades)
   const ci = calcExpectancyCI(trades)
   const cons = calcConsistency(trades)
@@ -250,6 +254,33 @@ export default function Public() {
             </div>
             <div style={{ fontSize: 11.5, color: C.mute, marginTop: 10, lineHeight: 1.6 }}>
               La ventaja se concentra en los setups que cumplen el plan completo; el resto de operaciones resta. Nota: en los primeros meses la clasificación del plan se asignó manualmente, por lo que esta comparación sobrestima la diferencia.
+            </div>
+          </Section>
+        )}
+
+        {/* Capital propio */}
+        {own && own.n > 0 && (
+          <Section title="Capital propio" sub="Cuenta real con dinero propio, fuera de las firmas. El resultado compone porque se arriesga un % del saldo actual.">
+            <div className="p-grid4">
+              <Stat label="Retorno" value={sgn(own.retPct) + '%'} sub={`${own.n} trades`} color={own.retPct >= 0 ? C.green : C.red} />
+              <Stat label="Resultado" value={sgn(own.m.rSum) + 'R'} sub={`expectativa ${own.m.avgR !== null ? sgn(own.m.avgR, 2) : '—'}R`} color={own.m.rSum >= 0 ? C.green : C.red} />
+              <Stat label="Win rate · PF" value={`${own.m.wr ?? '—'}% · ${own.m.pf ?? '—'}`} sub={`${own.m.w}W · ${own.m.l}L`} />
+              <Stat label="Caída máxima" value={own.maxDD + '%'} sub={own.avgRisk ? `riesgo medio ${own.avgRisk}% por trade` : undefined} color={C.amber} />
+            </div>
+            <Card style={{ marginTop: 12, padding: '16px 12px 8px' }}>
+              <ResponsiveContainer width="100%" height={180}>
+                <AreaChart data={own.points}>
+                  <defs><linearGradient id="gOwn" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={C.green} stopOpacity={0.3} /><stop offset="95%" stopColor={C.green} stopOpacity={0} /></linearGradient></defs>
+                  <XAxis dataKey="fecha" tick={{ fontSize: 9, fill: C.mute }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 9, fill: C.mute }} tickLine={false} axisLine={false} tickFormatter={v => sgn(v, 0) + '%'} />
+                  <Tooltip contentStyle={tip} formatter={v => [sgn(v) + '%', 'Retorno acumulado']} labelStyle={{ color: C.green }} />
+                  <Area type="monotone" dataKey="pct" stroke={C.green} strokeWidth={2.2} fill="url(#gOwn)" dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </Card>
+            <div style={{ fontSize: 11.5, color: C.mute, marginTop: 10, lineHeight: 1.6 }}>
+              Estimado a partir del registro de operaciones (sin comisiones ni swaps).
+              {ownLink && <> Verificable en <a href={ownLink} target="_blank" rel="noreferrer" style={{ color: C.blueL }}>Myfxbook ↗</a>.</>}
             </div>
           </Section>
         )}

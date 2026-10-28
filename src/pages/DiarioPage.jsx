@@ -3,6 +3,7 @@ import WithdrawalForm from '../components/WithdrawalForm'
 import { isRealFecha, isFutureFecha, calcDayStatus, calcRiskBucket, calcPlanBreakdown, fmtR } from '../lib/metrics'
 
 const RISK_OPTS = ['0.5%', '1%', '1.5%', '2%', '2.5%', '3%']
+const RISK_OPTS_PERSONAL = ['5%', '10%', '15%', '20%']
 const EMO_OPTS = ['Calmo 😌', 'Ansioso 😰', 'FOMO 😬', 'Revenge 😤']
 const SOB_OPTS = ['No', 'Sí, lo frené ✓', 'Sí, cedí']
 // Checklist pre-trade. El plan se DERIVA de estos 3 chequeos (no se elige a mano):
@@ -48,13 +49,13 @@ function ChipGroup({ opts, value, onChange }) {
 const today = () => new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 const EMPTY = { fecha: today(), cids: [], risks: {}, par: 'EURUSD', tmp: '2m', rr: '', rrReal: '', nota: '', resultado: '', direccion: '', parciales: 'No — full target', plan: '', chkEst: false, chkConf: false, chkLiq: false, emo: '', sob: 'No' }
 // Riesgo por defecto de una cuenta según tu regla (fondeada / challenge)
-const defRisk = (acc, profile) => String(acc?.type === 'funded' ? (parseFloat(profile?.risk_funded) || 1) : (parseFloat(profile?.risk_challenge) || 2))
+const defRisk = (acc, profile) => String(acc?.type === 'personal' ? (parseFloat(profile?.risk_personal) || 10) : acc?.type === 'funded' ? (parseFloat(profile?.risk_funded) || 1) : (parseFloat(profile?.risk_challenge) || 2))
 
 
 // Alertas de disciplina en vivo, calculadas con tus propios trades.
-function DisciplinePanel({ f, trades, accounts, profile }) {
+function DisciplinePanel({ f, trades, allTrades, accounts, profile }) {
   const items = []
-  const day = calcDayStatus(trades, f.fecha)
+  const day = calcDayStatus(allTrades || trades, f.fecha)
   if (day.level !== 'ok') items.push({ level: day.level, text: day.msg })
   else items.push({ level: 'ok', text: `Hoy: ${day.n} trades · ${fmtR(day.rToday, 1)}.` })
   const fundedMax = parseFloat(profile?.risk_funded) || 1
@@ -65,7 +66,10 @@ function DisciplinePanel({ f, trades, accounts, profile }) {
     const acc = accounts.find(a => String(a.id) === String(cid))
     const rp = parseFloat(f.risks[cid]) || 0
     if (!acc || !rp) return
-    if (rp >= 2.5) {
+    if (acc.type === 'personal') {
+      const usd = (acc.capital || 0) * rp / 100
+      items.push({ level: rp > 20 ? 'stop' : rp > 15 ? 'warn' : 'ok', text: `${acc.nombre} (capital propio): arriesgás ${rp}% — si toca SL perdés ~${rp}% del saldo (~$${usd.toFixed(0)} sobre el capital inicial). Es una cuenta real: no cuenta en las métricas de firmas.` })
+    } else if (rp >= 2.5) {
       const b = calcRiskBucket(trades, 2.5)
       items.push({ level: 'stop', text: `${acc.nombre}: riesgo ${rp}%. En tus datos, los trades a 2.5% o más suman ${b.w} ganados y ${b.l} perdidos (${fmtR(b.avgR, 2)} por trade).` })
     } else if (acc.type === 'funded' && rp > fundedMax) {
@@ -94,7 +98,7 @@ function DisciplinePanel({ f, trades, accounts, profile }) {
 }
 
 export default function DiarioPage({ ctx }) {
-  const { accounts, addTrade, toast } = ctx
+  const { allAccounts: accounts, addTrade, toast } = ctx
   const [mode, setMode] = useState('trade')
   const [f, setF] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
@@ -173,7 +177,7 @@ export default function DiarioPage({ ctx }) {
       {mode === 'trade' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div>
-            <DisciplinePanel f={f} trades={ctx.trades} accounts={accounts} profile={ctx.profile} />
+            <DisciplinePanel f={f} trades={ctx.trades} allTrades={ctx.allTrades} accounts={accounts} profile={ctx.profile} />
             <div className="card" style={{ marginBottom: 12 }}>
               <div className="card-title">Datos del trade</div>
               <div className="g2">
@@ -184,13 +188,13 @@ export default function DiarioPage({ ctx }) {
                   {active.map(a => {
                     const on = f.cids.includes(String(a.id))
                     return (
-                      <button key={a.id} className={`chip ${on ? (a.type === 'funded' ? 'active-amber' : 'active-blue') : ''}`}
+                      <button key={a.id} className={`chip ${on ? (a.type === 'funded' ? 'active-amber' : a.type === 'personal' ? 'active-green' : 'active-blue') : ''}`}
                         onClick={() => setF(p => {
                           const id = String(a.id)
                           if (p.cids.includes(id)) { const { [id]: _x, ...rest } = p.risks; return { ...p, cids: p.cids.filter(c => c !== id), risks: rest } }
                           return { ...p, cids: [...p.cids, id], risks: { ...p.risks, [id]: p.risks[id] || defRisk(a, ctx.profile) } }
                         })}>
-                        {on ? '✓ ' : ''}{a.nombre} · {a.type === 'funded' ? 'fondeada' : 'challenge'}
+                        {on ? '✓ ' : ''}{a.nombre} · {a.type === 'funded' ? 'fondeada' : a.type === 'personal' ? 'capital propio' : 'challenge'}
                       </button>
                     )
                   })}
@@ -222,7 +226,7 @@ export default function DiarioPage({ ctx }) {
                   return (
                     <div key={cid} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 12, color: 'var(--text2)', minWidth: 110 }}>{a?.nombre}</span>
-                      <ChipGroup opts={RISK_OPTS} value={String(f.risks[cid] || '') + (f.risks[cid] ? '%' : '')} onChange={v => setF(p => ({ ...p, risks: { ...p.risks, [cid]: v.replace('%', '') } }))} />
+                      <ChipGroup opts={a?.type === 'personal' ? RISK_OPTS_PERSONAL : RISK_OPTS} value={String(f.risks[cid] || '') + (f.risks[cid] ? '%' : '')} onChange={v => setF(p => ({ ...p, risks: { ...p.risks, [cid]: v.replace('%', '') } }))} />
                     </div>
                   )
                 })}
