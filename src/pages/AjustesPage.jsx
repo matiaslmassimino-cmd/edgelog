@@ -27,7 +27,7 @@ export default function AjustesPage({ ctx }) {
       const text = await file.text()
       const result = await importCSV(text)
       setImportResult(result)
-      toast(`✓ ${result.tradesImported} trades importados`, 'ok')
+      toast(`✓ ${result.tradesImported} trades importados` + (result.tradesSkipped ? ` · ${result.tradesSkipped} ya existían y se omitieron` : ''), 'ok')
     } catch (err) { toast('Error: ' + err.message, 'err') }
     setImporting(false); e.target.value = ''
   }

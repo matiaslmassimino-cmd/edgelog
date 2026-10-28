@@ -137,6 +137,17 @@ export function groupStats(trades, keyFn) {
   return [...map.entries()].map(([key, arr]) => ({ key, ...calcMetrics(arr) }))
 }
 
+// Plan exacto vs resto, en R. Reemplaza al viejo "real vs potencial" (que sumaba % de cuentas).
+export function calcExecutionSplit(trades) {
+  const closed = trades.filter(isClosed)
+  return {
+    all: calcMetrics(closed),
+    exact: calcMetrics(closed.filter(isQuality)),
+    rest: calcMetrics(closed.filter(e => !isQuality(e)))
+  }
+}
+export const fmtR = (v, d = 1) => v === null || v === undefined ? '—' : (v >= 0 ? '+' : '') + Number(v).toFixed(d) + 'R'
+
 export function calcPlanBreakdown(trades) {
   const rows = [
     { key: '100% exacto', label: 'Plan exacto' },

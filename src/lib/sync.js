@@ -229,14 +229,27 @@ export async function bulkImportCSV(userId, csvText, existingAccounts) {
     }
   })
   for (const acc of newAccounts) await saveAccount(userId, acc)
+  // Control de duplicados: un trade del CSV se omite si ya existe uno igual en la base
+  // (misma fecha, cuenta, riesgo, resultado, P&L, R:R, dirección y temporalidad). Se cuenta
+  // por cantidad: si el CSV trae 2 trades idénticos y la base ya tiene 1, se importa 1.
+  const keyOf = t => [t.fecha, String(t.c_nombre || '').trim(), Number(t.rp) || 0, t.resultado,
+    Number(t.r_pnl) || 0, Number(t.rr_real) || 0, t.direccion || '—', t.tmp || '—'].join('|')
+  const existingCount = {}
+  ;(await fetchTrades(userId)).forEach(t => { const k = keyOf(t); existingCount[k] = (existingCount[k] || 0) + 1 })
   // ids consecutivos en el orden del archivo → el orden relativo queda estable
   const baseId = Date.now()
-  const trades = rows.map((r, i) => ({ ...csvRowToTrade(r, accMap), id: baseId + i }))
+  let skipped = 0
+  const trades = []
+  rows.forEach((r, i) => {
+    const t = { ...csvRowToTrade(r, accMap), id: baseId + i }
+    const k = keyOf(t)
+    if (existingCount[k] > 0) { existingCount[k]--; skipped++ } else trades.push(t)
+  })
   const batchSize = 50
   for (let i = 0; i < trades.length; i += batchSize) {
     await Promise.all(trades.slice(i, i + batchSize).map(t => saveTrade(userId, t)))
   }
-  return { tradesImported: trades.length, newAccounts }
+  return { tradesImported: trades.length, tradesSkipped: skipped, newAccounts }
 }
 
 // Página pública: los datos llegan por una función de Supabase (get_public_track_record)
