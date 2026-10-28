@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
-import { groupByPeriod, periodMetrics, keyLabel, parseFecha, calcMetrics, isQuality } from '../lib/metrics'
+import { groupByPeriod, periodMetrics, keyLabel, parseFecha, calcMetrics, isQuality, isClosed } from '../lib/metrics'
 
 const tip = { background: '#1A2235', border: '1px solid #2A3A52', borderRadius: 8, fontSize: 11, color: '#E2E8F0' }
 
@@ -22,6 +22,17 @@ export default function RendimientoPage({ ctx }) {
     })
   }, [trades, selectedAcc, funded])
 
+  // Rentabilidad PONDERADA POR CAPITAL (sin compuesto): cada trade se pasa a USD con el capital de su
+  // cuenta y se divide por el capital total de las cuentas incluidas. Sumar "%" de cuentas de distinto
+  // tamaño (10k y 50k) daría un número que no corresponde a ningún capital real.
+  const capOf = new Map(funded.map(a => [String(a.id), a.capital || 0]))
+  const baseCap = selectedAcc === 'all'
+    ? funded.filter(a => trades.some(t => String(t.cid) === String(a.id))).reduce((x, a) => x + (a.capital || 0), 0)
+    : (capOf.get(selectedAcc) || 0)
+  const usdOf = t => (t.r_pnl || 0) / 100 * (capOf.get(String(t.cid)) || 0)
+  const wusd = arr => arr.filter(isClosed).reduce((x, t) => x + usdOf(t), 0)
+  const wpct = arr => baseCap > 0 ? parseFloat((wusd(arr) / baseCap * 100).toFixed(2)) : 0
+
   const map = useMemo(() => groupByPeriod(baseTrades, tab), [baseTrades, tab])
   const keys = useMemo(() => Object.keys(map).sort(), [map])
 
@@ -33,7 +44,7 @@ export default function RendimientoPage({ ctx }) {
     : d => `${d.getFullYear()}`
   const curKey = kfn(now)
   const curTrades = map[curKey] || []
-  const curM = curTrades.length ? periodMetrics(curTrades) : { tr: 0, w: 0, l: 0, wr: null, pnl: 0, avgRR: null, wrQ: null, days: 0, qCount: 0 }
+  const curM = curTrades.length ? { ...periodMetrics(curTrades), pnl: wpct(curTrades) } : { tr: 0, w: 0, l: 0, wr: null, pnl: 0, avgRR: null, wrQ: null, days: 0, qCount: 0 }
 
   // Gráfico del período seleccionado
   const chartTrades = useMemo(() => {
@@ -46,10 +57,10 @@ export default function RendimientoPage({ ctx }) {
   const chartData = useMemo(() => {
     let running = 0
     return [{ name: 'Inicio', pnl: 0 }].concat(chartTrades.map(t => {
-      running = parseFloat((running + (t.r_pnl || 0)).toFixed(4))
+      running = parseFloat((running + (baseCap > 0 ? usdOf(t) / baseCap * 100 : 0)).toFixed(4))
       return { name: t.fecha, pnl: parseFloat(running.toFixed(2)) }
     }))
-  }, [chartTrades])
+  }, [chartTrades, baseCap])
 
   // P&L mensual para el gráfico de barras
   const monthlyData = useMemo(() => {
@@ -57,12 +68,13 @@ export default function RendimientoPage({ ctx }) {
     const mn = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
     return Object.keys(mmap).sort().map(k => {
       const g2 = calcMetrics(mmap[k])
-      return { name: mn[parseInt(k.split('-')[1]) - 1], pnl: parseFloat(g2.pnl.toFixed(2)) }
+      return { name: mn[parseInt(k.split('-')[1]) - 1], pnl: wpct(mmap[k]) }
     })
-  }, [baseTrades])
+  }, [baseTrades, baseCap])
 
-  const gTotal = calcMetrics(baseTrades)
-  const selM = selectedKey ? periodMetrics(map[selectedKey] || []) : null
+  const gTotal = { ...calcMetrics(baseTrades), pnl: wpct(baseTrades) }
+  const gUsd = Math.round(wusd(baseTrades))
+  const selM = selectedKey ? { ...periodMetrics(map[selectedKey] || []), pnl: wpct(map[selectedKey] || []) } : null
 
   const accLabel = selectedAcc === 'all'
     ? 'Todas las fondeadas'
@@ -95,9 +107,9 @@ export default function RendimientoPage({ ctx }) {
       {/* KPIs globales de fondeadas */}
       <div className="kpi-grid kpi-grid-4" style={{ marginBottom: 16 }}>
         <div className="kpi dark">
-          <div className="kl">P&L total — {accLabel}</div>
+          <div className="kl">Rentabilidad sobre capital — {accLabel}</div>
           <div className={`kv ${gTotal.pnl >= 0 ? 'pos' : 'neg'}`}>{gTotal.pnl >= 0 ? '+' : ''}{gTotal.pnl.toFixed(2)}%</div>
-          <div className="ks">{gTotal.tr} trades · {gTotal.w}W · {gTotal.l}L</div>
+          <div className="ks">{gTotal.w}W · {gTotal.l}L · {gTotal.be} BE · {gUsd >= 0 ? '+' : ''}${gUsd.toLocaleString('es-AR')} sobre ${baseCap.toLocaleString('es-AR')}</div>
         </div>
         <div className="kpi">
           <div className="kl">Win rate</div>
@@ -240,7 +252,7 @@ export default function RendimientoPage({ ctx }) {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[...keys].reverse().map(k => {
-                const m = periodMetrics(map[k])
+                const m = { ...periodMetrics(map[k]), pnl: wpct(map[k]) }
                 const isSel = selectedKey === k
                 const isCur = k === curKey
                 return (

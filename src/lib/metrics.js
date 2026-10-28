@@ -453,7 +453,7 @@ export function calcMonthlyStats(trades) {
   const map = groupByPeriod(trades, 'month')
   const months = Object.keys(map).sort()
   if (!months.length) return { avg: null, std: null, returns: [], months: [] }
-  const returns = months.map(k => parseFloat(map[k].reduce((s, e) => s + (e.r_pnl || 0), 0).toFixed(2)))
+  const returns = months.map(k => parseFloat(map[k].reduce((s, e) => s + (isClosed(e) ? rOf(e) : 0), 0).toFixed(2)))
   const avg = returns.reduce((s, v) => s + v, 0) / returns.length
   const variance = returns.reduce((s, v) => s + Math.pow(v - avg, 2), 0) / returns.length
   const std = Math.sqrt(variance)

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { fetchPublicDataBySlug } from '../lib/sync'
-import { calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcExpectancyCI, calcExecutionSplit, fmtR, calcMaxDD, calcFundedSummary, calcFundedCurve, calcEvaluationStats, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, calcSetups, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
+import { rOf, calcMetrics, isQuality, calcEdgeRatio, calcExpectancy, calcExpectancyCI, calcExecutionSplit, fmtR, calcMaxDD, calcFundedSummary, calcFundedCurve, calcEvaluationStats, calcConsistency, calcAUM, buildEquityCurve, calcStreaks, calcSetups, parseFecha, groupByPeriod, periodMetrics, keyLabel } from '../lib/metrics'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 
 const tip = { background: '#0F1828', border: '1px solid #1E3A5F', borderRadius: 10, fontSize: 11, color: '#E2E8F0', padding: '10px 14px' }
@@ -78,7 +78,7 @@ function PeriodExplorer({ trades }) {
       .sort((a, b) => { const da = parseFecha(a.fecha), db = parseFecha(b.fecha); return (da - db) || (a.id - b.id) })
     let running = 0
     return [{ name: 'Inicio', pnl: 0 }].concat(sorted.map(t => {
-      running = parseFloat((running + (t.r_pnl || 0)).toFixed(4))
+      running = parseFloat((running + rOf(t)).toFixed(4))
       return { name: t.fecha, pnl: parseFloat(running.toFixed(2)) }
     }))
   }, [activeTrades])
@@ -109,7 +109,7 @@ function PeriodExplorer({ trades }) {
               { label: 'Trades', value: curM.tr, sub: `${curM.days}d`, color: '#60A5FA' },
               { label: 'Win rate', value: curM.wr !== null ? curM.wr + '%' : '—', sub: `${curM.w}W · ${curM.l}L`, color: curM.wr >= 50 ? '#22C55E' : '#EF4444' },
               { label: 'WR ✦', value: curM.wrQ !== null ? curM.wrQ + '%' : '—', sub: `${curM.qCount} disciplinados`, color: '#EAB308' },
-              { label: 'P&L período', value: (curM.pnl >= 0 ? '+' : '') + curM.pnl.toFixed(2) + '%', sub: 'acumulado', color: curM.pnl >= 0 ? '#22C55E' : '#EF4444' },
+              { label: 'R del período', value: fmtR(curM.rSum, 1), sub: 'acumulado', color: curM.rSum >= 0 ? '#22C55E' : '#EF4444' },
               { label: 'R:R real', value: curM.avgRR !== null ? '1:' + curM.avgRR.toFixed(1) : '—', sub: 'promedio wins', color: curM.avgRR >= 2 ? '#22C55E' : '#94A3B8' },
             ].map(({ label, value, sub, color }) => (
               <div key={label} style={{ background: '#111827', border: '1px solid #1E2A3A', borderRadius: 12, padding: '12px 14px' }}>
@@ -139,7 +139,7 @@ function PeriodExplorer({ trades }) {
               { label: 'Trades', value: selM.tr, sub: `${selM.days}d`, color: '#60A5FA' },
               { label: 'Win rate', value: selM.wr !== null ? selM.wr + '%' : '—', sub: `${selM.w}W · ${selM.l}L`, color: selM.wr >= 50 ? '#22C55E' : '#EF4444' },
               { label: 'WR ✦', value: selM.wrQ !== null ? selM.wrQ + '%' : '—', sub: `${selM.qCount} disciplinados`, color: '#EAB308' },
-              { label: 'P&L período', value: (selM.pnl >= 0 ? '+' : '') + selM.pnl.toFixed(2) + '%', sub: 'acumulado', color: selM.pnl >= 0 ? '#22C55E' : '#EF4444' },
+              { label: 'R del período', value: fmtR(selM.rSum, 1), sub: 'acumulado', color: selM.rSum >= 0 ? '#22C55E' : '#EF4444' },
               { label: 'R:R real', value: selM.avgRR !== null ? '1:' + selM.avgRR.toFixed(1) : '—', sub: 'promedio wins', color: selM.avgRR >= 2 ? '#22C55E' : '#94A3B8' },
             ].map(({ label, value, sub, color }) => (
               <div key={label} style={{ background: '#111827', border: '1px solid #1E3A5F', borderRadius: 12, padding: '12px 14px' }}>
@@ -167,8 +167,8 @@ function PeriodExplorer({ trades }) {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.03)" />
             <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-            <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + '%'} />
-            <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'P&L acum.']} labelStyle={{ color: '#60A5FA', fontWeight: 600 }} />
+            <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + 'R'} />
+            <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + 'R', 'R acum.']} labelStyle={{ color: '#60A5FA', fontWeight: 600 }} />
             <Area type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2.5} fill="url(#pnlGradPer)" dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#0B0F17', strokeWidth: 2 }} />
           </AreaChart>
         </ResponsiveContainer>
@@ -221,7 +221,7 @@ function PeriodExplorer({ trades }) {
               <div style={{ textAlign: 'right', fontSize: 12.5, color: '#94A3B8' }}>{m.tr} <span style={{ fontSize: 10, color: '#4A6080' }}>{m.days}d</span></div>
               <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: m.wr !== null ? (m.wr >= 50 ? '#22C55E' : '#EF4444') : '#2A3A52' }}>{m.wr !== null ? m.wr + '%' : '—'}</div>
               <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: m.wrQ !== null ? (m.wrQ >= 50 ? '#22C55E' : '#EF4444') : '#2A3A52' }}>{m.wrQ !== null ? m.wrQ + '%' : '—'}</div>
-              <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: m.pnl >= 0 ? '#22C55E' : '#EF4444' }}>{m.pnl >= 0 ? '+' : ''}{m.pnl.toFixed(2)}%</div>
+              <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, color: m.rSum >= 0 ? '#22C55E' : '#EF4444' }}>{fmtR(m.rSum, 1)}</div>
             </div>
           )
         })}
@@ -342,7 +342,7 @@ export default function Public() {
           </div>
           <div className="pub-hero-stats" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {[
-              { label: 'R acumulado', value: (g.rSum >= 0 ? '+' : '') + g.rSum.toFixed(1) + 'R', sub: `suma de % de cuentas: ${g.pnl >= 0 ? '+' : ''}${g.pnl.toFixed(2)}%`, color: g.rSum >= 0 ? '#22C55E' : '#EF4444', big: true },
+              { label: 'R acumulado', value: (g.rSum >= 0 ? '+' : '') + g.rSum.toFixed(1) + 'R', sub: `${nSetups} setups · 1R = riesgo por trade`, color: g.rSum >= 0 ? '#22C55E' : '#EF4444', big: true },
               { label: 'Expectativa', value: g.avgR !== null ? (g.avgR >= 0 ? '+' : '') + g.avgR.toFixed(2) + 'R' : '—', sub: ci ? `IC 95%: ${ci.lo >= 0 ? '+' : ''}${ci.lo} a ${ci.hi >= 0 ? '+' : ''}${ci.hi}` : 'por trade', color: g.avgR > 0 ? '#22C55E' : '#EF4444' },
               { label: 'Win rate', value: g.wr !== null ? g.wr + '%' : '—', sub: 'sin contar breakeven', color: g.wr >= 50 ? '#22C55E' : '#EF4444' },
               { label: 'WR plan exacto ✦', value: gQ.wr !== null ? gQ.wr + '%' : '—', sub: `${gQ.n} trades`, color: '#EAB308' },
@@ -445,7 +445,7 @@ export default function Public() {
           <StatCard label="Expectancy por Trade" value={exp !== null ? (exp > 0 ? '+' : '') + exp + 'R' : '—'} color={exp > 0 ? '#22C55E' : '#EF4444'} sub={exp > 0 ? 'Edge positivo' : 'Sin edge'} desc="Ganancia o pérdida promedio esperada por operación. Si es positiva, el sistema tiene ventaja estadística y es rentable a largo plazo." />
           <StatCard label="Drawdown máximo" value={ddR + 'R'} color={ddPct >= 8 ? '#EF4444' : '#F59E0B'} sub={`${ddPct}% de cuenta · peor cuenta`} desc="Mayor caída desde un máximo, medida cuenta por cuenta sobre el cierre de cada día. Se muestra la peor de todas las cuentas." />
           <StatCard label="Racha perdedora máx." value={String(streaks.maxL)} color="#F59E0B" sub="setups seguidos (sin contar BE)" desc="Mayor cantidad de setups perdedores consecutivos. Un mismo setup operado en varias cuentas cuenta como uno. Los breakeven no cortan la racha." />
-          <StatCard label="Consistencia mensual" value={cons.pct !== null ? cons.pct + '%' : '—'} color={cons.pct >= 70 ? '#22C55E' : '#F59E0B'} sub={`${cons.months.filter(m => m.positive).length}/${cons.months.length} meses positivos`} desc="Porcentaje de meses cerrados en positivo. Una consistencia alta (+70%) indica resultados estables mes a mes." />
+          <StatCard label="Consistencia mensual" value={cons.pct !== null ? cons.pct + '%' : '—'} color={cons.pct >= 70 ? '#22C55E' : '#F59E0B'} sub={`${cons.months.filter(m => m.positive).length}/${cons.months.length} meses positivos (en R)`} desc="Porcentaje de meses cerrados en positivo. Una consistencia alta (+70%) indica resultados estables mes a mes." />
         </div>
 
         {/* Heatmap */}

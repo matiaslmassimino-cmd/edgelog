@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid } from 'recharts'
-import { groupByPeriod, periodMetrics, keyLabel, parseFecha } from '../lib/metrics'
+import { groupByPeriod, periodMetrics, keyLabel, parseFecha, rOf, fmtR } from '../lib/metrics'
 
 const tip = { background: '#1A2235', border: '1px solid #2A3A52', borderRadius: 8, fontSize: 11, color: '#E2E8F0' }
 
@@ -34,7 +34,7 @@ export default function PeriodosPage({ ctx }) {
     if (chartMode === 'pnl') {
       let running = 0
       return [{ name: 'Inicio', pnl: 0 }].concat(chartTrades.map(t => {
-        running = parseFloat((running + (t.r_pnl || 0)).toFixed(4))
+        running = parseFloat((running + rOf(t)).toFixed(4))
         return { name: t.fecha, pnl: parseFloat(running.toFixed(2)) }
       }))
     }
@@ -70,7 +70,7 @@ export default function PeriodosPage({ ctx }) {
               { label: 'Trades', value: curM.tr, sub: `${curM.days}d` },
               { label: 'Win rate', value: curM.wr !== null ? `${curM.wr}%` : '—', sub: `${curM.w}W · ${curM.l}L`, pos: curM.wr >= 50, neg: curM.wr !== null && curM.wr < 50 },
               { label: 'WR calidad ✦', value: curM.wrQ !== null ? `${curM.wrQ}%` : '—', sub: `${curM.qCount} disciplinados`, pos: curM.wrQ >= 50 },
-              { label: 'P&L período', value: (curM.pnl >= 0 ? '+' : '') + curM.pnl.toFixed(2) + '%', sub: 'acumulado', pos: curM.pnl > 0, neg: curM.pnl < 0 },
+              { label: 'R del período', value: fmtR(curM.rSum, 1), sub: 'acumulado', pos: curM.rSum > 0, neg: curM.rSum < 0 },
               { label: 'R:R real', value: curM.avgRR !== null ? `1:${curM.avgRR.toFixed(1)}` : '—', sub: 'promedio wins', pos: curM.avgRR >= 2 },
             ].map(({ label, value, sub, pos, neg }) => (
               <div key={label} className="kpi">
@@ -91,7 +91,7 @@ export default function PeriodosPage({ ctx }) {
           </div>
           <select style={{ padding: '6px 10px', fontSize: 12, borderRadius: 8, border: '1px solid var(--border2)', background: 'var(--bg3)', color: 'var(--text)', outline: 'none' }}
             value={chartMode} onChange={e => setChartMode(e.target.value)}>
-            <option value="pnl">P&L acumulado</option>
+            <option value="pnl">R acumulado</option>
             <option value="wr">Win rate</option>
             <option value="trades">Trades</option>
           </select>
@@ -107,8 +107,8 @@ export default function PeriodosPage({ ctx }) {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)" />
               <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-              <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + '%'} />
-              <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + '%', 'P&L acum.']} />
+              <YAxis tick={{ fontSize: 9, fill: '#4A6080' }} tickLine={false} axisLine={false} tickFormatter={v => (v >= 0 ? '+' : '') + v + 'R'} />
+              <Tooltip contentStyle={tip} formatter={v => [(v >= 0 ? '+' : '') + v + 'R', 'R acum.']} />
               <Area type="monotone" dataKey="pnl" stroke="#3B82F6" strokeWidth={2} fill="url(#pnlGradPer)" dot={false} activeDot={{ r: 5, fill: '#60A5FA', stroke: '#111827', strokeWidth: 2 }} />
             </AreaChart>
           ) : (
@@ -130,7 +130,7 @@ export default function PeriodosPage({ ctx }) {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr', gap: 10, padding: '0 14px 8px', fontSize: 9.5, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 600 }}>
             <span>Período</span><span style={{ textAlign: 'right' }}>Trades</span><span style={{ textAlign: 'right' }}>WR</span>
-            <span style={{ textAlign: 'right' }}>WR ✦</span><span style={{ textAlign: 'right' }}>P&L</span>
+            <span style={{ textAlign: 'right' }}>WR ✦</span><span style={{ textAlign: 'right' }}>R</span>
             <span style={{ textAlign: 'right' }}>R:R</span><span style={{ textAlign: 'right' }}>PF</span>
           </div>
           {[...keys].reverse().map(k => {
@@ -150,7 +150,7 @@ export default function PeriodosPage({ ctx }) {
                 <div style={{ textAlign: 'right', fontSize: 12.5, color: 'var(--text2)' }}>{m.tr}</div>
                 <div style={{ textAlign: 'right', fontSize: 12.5, fontWeight: 600, color: m.wr !== null ? (m.wr >= 50 ? 'var(--green)' : 'var(--red)') : 'var(--text3)' }}>{m.wr !== null ? m.wr + '%' : '—'}</div>
                 <div style={{ textAlign: 'right', fontSize: 12.5, fontWeight: 600, color: m.wrQ !== null ? (m.wrQ >= 50 ? 'var(--green)' : 'var(--red)') : 'var(--text3)' }}>{m.wrQ !== null ? m.wrQ + '%' : '—'}</div>
-                <div style={{ textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: m.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{m.pnl >= 0 ? '+' : ''}{m.pnl.toFixed(2)}%</div>
+                <div style={{ textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: m.rSum >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtR(m.rSum, 1)}</div>
                 <div style={{ textAlign: 'right', fontSize: 12.5, color: m.avgRR !== null ? (m.avgRR >= 2 ? 'var(--green)' : 'var(--text2)') : 'var(--text3)' }}>{m.avgRR !== null ? '1:' + m.avgRR.toFixed(1) : '—'}</div>
                 <div style={{ textAlign: 'right', fontSize: 12.5, color: m.pf !== null ? (m.pf >= 1.5 ? 'var(--green)' : m.pf >= 1 ? 'var(--amber)' : 'var(--red)') : 'var(--text3)' }}>{m.pf !== null ? m.pf.toFixed(2) : '—'}</div>
               </div>

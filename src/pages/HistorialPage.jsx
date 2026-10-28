@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { isQuality, calcMetrics } from '../lib/metrics'
+import { isQuality, calcMetrics, fmtR } from '../lib/metrics'
 
 const DIRS = ['—', 'Compra', 'Venta']
 
@@ -147,7 +147,7 @@ export default function HistorialPage({ ctx }) {
         <div style={{ display: 'flex', gap: 12, marginBottom: 14, padding: '10px 14px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, color: 'var(--text2)' }}>{filtered.length} trades</span>
           <span style={{ fontSize: 12, color: filteredMetrics.wr >= 50 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>WR: {filteredMetrics.wr !== null ? filteredMetrics.wr + '%' : '—'}</span>
-          <span style={{ fontSize: 12, color: filteredMetrics.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>P&L: {filteredMetrics.pnl >= 0 ? '+' : ''}{filteredMetrics.pnl.toFixed(2)}%</span>
+          <span style={{ fontSize: 12, color: filteredMetrics.rSum >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>R: {fmtR(filteredMetrics.rSum, 1)}</span>
           <span style={{ fontSize: 12, color: 'var(--text3)' }}>{filteredMetrics.w}W · {filteredMetrics.l}L</span>
           {filteredMetrics.avgRR && <span style={{ fontSize: 12, color: 'var(--text2)' }}>R:R: 1:{filteredMetrics.avgRR.toFixed(1)}</span>}
         </div>

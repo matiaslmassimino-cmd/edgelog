@@ -151,7 +151,7 @@ export default function Dashboard({ ctx }) {
       <div className="kpi-grid kpi-grid-4">
         <KPICard dark label="Trades" value={g.n} sub={`${nSetups} setups · ${g.w}W · ${g.l}L · ${g.be} BE`} />
         <KPICard label="Win rate" value={g.wr !== null ? `${g.wr}%` : '—'} sub="sin contar breakeven" pos={g.wr >= 50} neg={g.wr !== null && g.wr < 50} />
-        <KPICard label="R acumulado" value={fmtR(g.rSum)} sub={`1R = lo que arriesgás por trade · suma de cuentas ${g.pnl >= 0 ? '+' : ''}${g.pnl.toFixed(2)}%`} pos={g.rSum >= 0} neg={g.rSum < 0} />
+        <KPICard label="R acumulado" value={fmtR(g.rSum)} sub={`1R = lo que arriesgás por trade`} pos={g.rSum >= 0} neg={g.rSum < 0} />
         <KPICard label="Expectativa por trade" value={fmtR(g.avgR, 2)} sub={`Profit factor ${g.pf !== null ? g.pf.toFixed(2) : '—'} (en R)`} pos={g.avgR > 0} neg={g.avgR !== null && g.avgR < 0} goalBar={goalBarData(g.pf, goals.pfGoal)} />
       </div>
 

@@ -21,7 +21,7 @@ export default function TrackRecordPage({ ctx }) {
   const planData = ['100% exacto','Parcialmente','No cumplía'].map(plan => {
     const arr = trades.filter(e => e.plan === plan)
     const g2 = calcMetrics(arr)
-    return { name: plan, trades: arr.length, wr: g2.wr, pnl: g2.pnl }
+    return { name: plan, trades: arr.length, wr: g2.wr, pnl: g2.rSum }
   })
 
   return (
@@ -41,7 +41,7 @@ export default function TrackRecordPage({ ctx }) {
         <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 17, color: 'rgba(96,165,250,.6)', marginBottom: 20 }}>{profile?.name || 'Matias Massimino'} · Prop Firm Journal</div>
         <div>
           <div className="tr-hero-val" style={{ color: g.rSum >= 0 ? '#22C55E' : '#EF4444' }}>{g.rSum >= 0 ? '+' : ''}{g.rSum.toFixed(1)}R</div>
-          <div className="tr-hero-lbl">R acumulado · suma de % de cuentas: {g.pnl >= 0 ? '+' : ''}{g.pnl.toFixed(2)}%</div>
+          <div className="tr-hero-lbl">R acumulado · 1R = lo que arriesgás por trade</div>
         </div>
         <div className="tr-meta-row">
           {[
@@ -188,14 +188,14 @@ export default function TrackRecordPage({ ctx }) {
       <div className="quality-sep">Adherencia al plan</div>
       <div className="card" style={{ marginBottom: 18 }}>
         <table>
-          <thead><tr><th>Plan</th><th>Trades</th><th>Win rate</th><th>P&L</th></tr></thead>
+          <thead><tr><th>Plan</th><th>Trades</th><th>Win rate</th><th>R</th></tr></thead>
           <tbody>
             {planData.map(d => (
               <tr key={d.name}>
                 <td style={{ fontWeight: 600, color: d.name === '100% exacto' ? 'var(--green)' : d.name === 'Parcialmente' ? 'var(--amber)' : 'var(--red)' }}>{d.name}</td>
                 <td>{d.trades}</td>
                 <td style={{ color: d.wr >= 50 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{d.wr !== null ? d.wr + '%' : '—'}</td>
-                <td style={{ color: d.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{d.pnl >= 0 ? '+' : ''}{d.pnl.toFixed(2)}%</td>
+                <td style={{ color: d.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{fmtR(d.pnl, 1)}</td>
               </tr>
             ))}
           </tbody>
